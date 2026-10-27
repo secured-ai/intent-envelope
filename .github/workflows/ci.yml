@@ -51,3 +51,23 @@ jobs:
                   packages/python/src/intent_envelope/schema/intent-envelope-0.1.json \
             || { echo "The copy under packages/python has drifted from schema/. Copy it across."; exit 1; }
           echo "schema copy matches"
+
+  # One stable name for branch protection to require. The matrix can gain or lose a
+  # Python version without the ruleset silently waiting on a check name that no
+  # longer exists. always() matters: without it this job is skipped when a
+  # dependency fails, and a skipped required check never reports a failure.
+  all-checks-passed:
+    if: always()
+    needs: [conformance, schema-copy-matches]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every required job must have succeeded
+        run: |
+          echo "conformance:        ${{ needs.conformance.result }}"
+          echo "schema-copy-matches: ${{ needs['schema-copy-matches'].result }}"
+          if [ "${{ needs.conformance.result }}" != "success" ] || \
+             [ "${{ needs['schema-copy-matches'].result }}" != "success" ]; then
+            echo "A required job did not succeed."
+            exit 1
+          fi
+          echo "All required checks passed."
