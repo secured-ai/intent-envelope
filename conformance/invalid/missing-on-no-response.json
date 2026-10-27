@@ -1,0 +1,8 @@
+{
+  "intent_envelope": "0.1",
+  "id": "no-fallback",
+  "purpose": "An envelope that never says what happens when an escalation goes unanswered.",
+  "principal": { "agent_identity": "some-agent" },
+  "tools": { "allow": [{ "name": "read_file" }] },
+  "limits": { "max_tool_calls": 10 }
+}

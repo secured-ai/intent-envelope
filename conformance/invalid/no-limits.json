@@ -1,0 +1,9 @@
+{
+  "intent_envelope": "0.1",
+  "id": "unbounded",
+  "purpose": "An envelope with no budget at all, which cannot be stopped by a limit.",
+  "principal": { "agent_identity": "some-agent" },
+  "tools": { "allow": [{ "name": "read_file" }] },
+  "limits": {},
+  "on_no_response": "deny"
+}

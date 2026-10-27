@@ -1,0 +1,9 @@
+{
+  "intent_envelope": "0.1",
+  "id": "no-tools",
+  "purpose": "An envelope whose allow list is empty, which is a deny-everything envelope written by accident.",
+  "principal": { "agent_identity": "some-agent" },
+  "tools": { "allow": [] },
+  "limits": { "max_tool_calls": 10 },
+  "on_no_response": "deny"
+}

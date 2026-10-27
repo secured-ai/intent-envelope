@@ -1,0 +1,22 @@
+{
+  "intent_envelope": "0.1",
+  "id": "clinical-policy-search",
+  "revision": 2,
+  "purpose": "Answer staff questions about internal clinical policy documents, with citations, and nothing else.",
+  "principal": { "agent_identity": "policy-rag-agent", "on_behalf_of": "clinical-operations" },
+  "tools": {
+    "allow": [
+      { "name": "vector_search", "constraints": { "collections": ["clinical-policy"], "top_k_max": 8 } },
+      { "name": "fetch_document", "constraints": { "collections": ["clinical-policy"] } }
+    ],
+    "deny": ["http_request", "send_email", "write_document", "query_patient_records"]
+  },
+  "data": {
+    "allow": ["clinical-policy:read"],
+    "deny": ["ehr.*", "billing.*"]
+  },
+  "recipients": { "allow": [], "max_per_run": 0 },
+  "limits": { "max_tool_calls": 20, "max_records": 50, "max_runtime_seconds": 120 },
+  "expires": "2027-06-30T00:00:00Z",
+  "on_no_response": "deny"
+}

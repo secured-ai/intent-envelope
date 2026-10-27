@@ -1,0 +1,9 @@
+{
+  "intent_envelope": "1.0",
+  "id": "future-version",
+  "purpose": "An envelope claiming a specification version this validator does not implement.",
+  "principal": { "agent_identity": "some-agent" },
+  "tools": { "allow": [{ "name": "read_file" }] },
+  "limits": { "max_tool_calls": 10 },
+  "on_no_response": "deny"
+}

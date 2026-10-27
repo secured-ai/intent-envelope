@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "intent-envelope"
+version = "0.0.1"
+description = "Validate declared intent envelopes for AI agents: what an agent may do, enforced outside the model."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [{ name = "SecuredAI", email = "contact@securedai.org" }]
+keywords = ["ai", "agents", "security", "intent", "guardrails", "mcp"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Security",
+  "Programming Language :: Python :: 3",
+]
+dependencies = ["jsonschema>=4.18"]
+
+[project.scripts]
+intent-envelope = "intent_envelope.cli:main"
+
+[project.urls]
+Homepage = "https://securedai.org/agent-intent"
+Documentation = "https://securedai.org/architecture"
+Repository = "https://github.com/secured-ai/intent-envelope"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/intent_envelope"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../../schema/intent-envelope-0.1.json" = "intent_envelope/schema/intent-envelope-0.1.json"

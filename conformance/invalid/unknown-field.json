@@ -1,0 +1,9 @@
+{
+  "intent_envelope": "0.1",
+  "id": "typo-field",
+  "purpose": "An envelope with a misspelled key, which must fail rather than being silently ignored.",
+  "principal": { "agent_identity": "some-agent" },
+  "tools": { "allow": [{ "name": "read_file" }] },
+  "limits": { "max_tool_calls": 10 },
+  "on_no_responce": "deny"
+}

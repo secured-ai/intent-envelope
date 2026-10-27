@@ -1,0 +1,42 @@
+name: CI
+
+# Actions are referenced by tag here. Pin them to commit SHAs once Dependabot is
+# enabled on the repository, so a moved tag cannot change what runs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./packages/python pytest
+      - name: Schema parses
+        run: python -c "import json,pathlib;json.loads(pathlib.Path('schema/intent-envelope-0.1.json').read_text());print('schema ok')"
+      - name: Conformance fixtures
+        run: python -m pytest packages/python/tests -q
+      - name: CLI accepts every example
+        run: intent-envelope validate examples/*.json
+      - name: CLI rejects every invalid fixture
+        run: |
+          for f in conformance/invalid/*.json; do
+            if intent-envelope validate "$f" 2>/dev/null; then
+              echo "FAIL: $f was accepted and should not have been"; exit 1
+            fi
+          done
+          echo "all invalid fixtures rejected"

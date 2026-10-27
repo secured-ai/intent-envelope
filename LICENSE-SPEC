@@ -1,0 +1,15 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+The specification text in this repository, meaning the contents of spec/ and this
+repository's prose documentation, is licensed under the Creative Commons Attribution
+4.0 International License.
+
+You are free to share and adapt the material for any purpose, including commercially,
+provided you give appropriate credit to SecuredAI.org, link to the license, and
+indicate if changes were made.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode
+Summary: https://creativecommons.org/licenses/by/4.0/
+
+Source code in this repository, including everything under packages/ and the JSON
+Schema under schema/, is licensed under Apache-2.0 instead. See LICENSE.

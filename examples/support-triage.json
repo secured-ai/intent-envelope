@@ -1,0 +1,26 @@
+{
+  "intent_envelope": "0.1",
+  "id": "support-triage",
+  "revision": 11,
+  "purpose": "Read inbound support tickets, classify them, and draft a first reply for a human agent to review.",
+  "principal": { "agent_identity": "support-agent", "on_behalf_of": "customer-support" },
+  "tools": {
+    "allow": [
+      { "name": "lookup_ticket", "constraints": { "status": ["new", "open"] } },
+      { "name": "search_knowledge_base" },
+      { "name": "draft_reply", "constraints": { "send": false } }
+    ],
+    "deny": ["send_reply", "issue_refund", "close_account"]
+  },
+  "data": {
+    "allow": ["tickets:read", "kb:read", "customer.profile:read"],
+    "deny": ["customer.payment_methods", "customer.support_notes.internal"]
+  },
+  "recipients": { "allow": [], "max_per_run": 0 },
+  "limits": { "max_tool_calls": 60, "max_records": 200, "max_spend_usd": 2, "max_runtime_seconds": 300 },
+  "escalate": [
+    { "when": "ticket.sentiment == 'churn_risk'", "to": "support-lead", "timeout_seconds": 3600 },
+    { "when": "tool == 'issue_refund'", "to": "support-lead", "timeout_seconds": 3600 }
+  ],
+  "on_no_response": "deny"
+}

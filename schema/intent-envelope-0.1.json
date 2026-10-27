@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securedai.org/schemas/intent-envelope/0.1.json",
+  "title": "Intent Envelope",
+  "description": "A declaration of what an AI agent is for, written before the agent runs and enforced outside the model at every tool call.",
+  "type": "object",
+  "required": ["intent_envelope", "id", "purpose", "principal", "tools", "limits", "on_no_response"],
+  "additionalProperties": false,
+  "properties": {
+    "intent_envelope": {
+      "description": "Version of this specification the envelope is written against.",
+      "const": "0.1"
+    },
+    "id": {
+      "description": "Stable identifier for this envelope, unique within the deploying organization.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
+    },
+    "revision": {
+      "description": "Incremented whenever the envelope changes. Enforcement points may refuse an unknown revision.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "purpose": {
+      "description": "What this agent is for, in terms a reviewer who owns the workflow can approve or reject.",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "principal": {
+      "description": "Who the agent acts as, and on whose behalf.",
+      "type": "object",
+      "required": ["agent_identity"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_identity": {
+          "description": "The agent's own identity. Never a shared or human credential.",
+          "type": "string",
+          "minLength": 1
+        },
+        "on_behalf_of": {
+          "description": "The human or team whose authority the agent is borrowing.",
+          "type": "string"
+        }
+      }
+    },
+    "tools": {
+      "description": "Which tools the agent may call. A call to anything not allowed is refused.",
+      "type": "object",
+      "required": ["allow"],
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/toolGrant" }
+        },
+        "deny": {
+          "description": "Tools refused even if a future change widens the allow list. Deny always wins.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "data": {
+      "description": "Which data the agent may reach, expressed in whatever addressing the deployment uses.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "deny": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "recipients": {
+      "description": "Who the agent may send anything to. Absent means nobody.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Addresses or domain patterns the agent may contact.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "max_per_run": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "limits": {
+      "description": "Budget the run may consume before it is stopped.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "max_tool_calls": { "type": "integer", "minimum": 1 },
+        "max_records": { "type": "integer", "minimum": 0 },
+        "max_spend_usd": { "type": "number", "minimum": 0 },
+        "max_runtime_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "escalate": {
+      "description": "Actions that are inside the envelope but must pause for a named human.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "when": {
+            "description": "The condition that triggers escalation, in the deployment's own expression syntax.",
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "description": "A named human or rota. Never an unattended address.",
+            "type": "string",
+            "minLength": 1
+          },
+          "timeout_seconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "expires": {
+      "description": "After this instant the envelope is invalid and every call is refused.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "on_no_response": {
+      "description": "What happens when an escalation is never answered. Only deny is safe.",
+      "enum": ["deny", "allow"]
+    }
+  },
+  "$defs": {
+    "toolGrant": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "constraints": {
+          "description": "Argument constraints the enforcement point checks before the call is made.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}
