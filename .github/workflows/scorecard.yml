@@ -1,0 +1,50 @@
+name: OpenSSF Scorecard
+
+# Scores this repository against the OpenSSF checks: pinned dependencies, branch
+# protection, token permissions, code scanning, release signing and the rest.
+# Results land in the Security tab and feed the badge in the README.
+# Actions are pinned to commit SHAs, kept current by Dependabot.
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "41 6 * * 1"
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # upload the SARIF result to code scanning
+      id-token: write          # publish the result, which the badge reads
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publishes the score so the badge and the public API can read it.
+          # Only meaningful on a public repository.
+          publish_results: true
+
+      - name: Keep the raw result for 5 days
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          sarif_file: results.sarif

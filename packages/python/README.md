@@ -1,5 +1,8 @@
 # Intent Envelope
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/secured-ai/intent-envelope/badge)](https://scorecard.dev/viewer/?uri=github.com/secured-ai/intent-envelope)
+[![CI](https://github.com/secured-ai/intent-envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/secured-ai/intent-envelope/actions/workflows/ci.yml)
+
 **Your agent was not hacked. It was told what to do, just not by you.**
 
 An agent reads documents, tickets, web pages and tool output. Any of them can contain
