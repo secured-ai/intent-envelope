@@ -1,0 +1,43 @@
+{
+  "intent_envelope": "0.1",
+  "id": "fintech-support-chatbot",
+  "revision": 9,
+  "purpose": "Answer one authenticated customer's questions about their own account, balances and transaction history, and nothing about anyone else's.",
+  "principal": {
+    "agent_identity": "support-chatbot",
+    "on_behalf_of": "session.authenticated_customer_id"
+  },
+  "tools": {
+    "allow": [
+      {
+        "name": "lookup_account",
+        "constraints": { "customer_id": "session.authenticated_customer_id" }
+      },
+      {
+        "name": "lookup_transactions",
+        "constraints": {
+          "customer_id": "session.authenticated_customer_id",
+          "max_window_days": 365
+        }
+      },
+      { "name": "search_help_center" }
+    ],
+    "deny": ["initiate_transfer", "update_profile", "send_email", "http_request"]
+  },
+  "data": {
+    "allow": ["accounts:read:own", "transactions:read:own", "help_center:read"],
+    "deny": ["accounts:read:any", "identity.ssn", "card.pan", "internal.fraud_notes"]
+  },
+  "recipients": { "allow": [], "max_per_run": 0 },
+  "limits": {
+    "max_tool_calls": 30,
+    "max_records": 500,
+    "max_spend_usd": 1.5,
+    "max_runtime_seconds": 120
+  },
+  "escalate": [
+    { "when": "intent == 'dispute_transaction'", "to": "support-duty-agent", "timeout_seconds": 1800 },
+    { "when": "customer_requests_human", "to": "support-duty-agent", "timeout_seconds": 900 }
+  ],
+  "on_no_response": "deny"
+}

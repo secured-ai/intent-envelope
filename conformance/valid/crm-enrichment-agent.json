@@ -1,0 +1,44 @@
+{
+  "intent_envelope": "0.1",
+  "id": "crm-enrichment-agent",
+  "revision": 17,
+  "purpose": "Research a named prospect from public sources and update that prospect's CRM record. Nothing is sent to anyone outside the company.",
+  "principal": {
+    "agent_identity": "enrichment-agent",
+    "on_behalf_of": "revenue-operations"
+  },
+  "tools": {
+    "allow": [
+      { "name": "web_research", "constraints": { "providers": ["exa", "serper"], "max_queries": 12 } },
+      { "name": "crm_read", "constraints": { "objects": ["contact", "account", "opportunity"] } },
+      {
+        "name": "crm_write",
+        "constraints": {
+          "objects": ["contact", "account"],
+          "fields": ["firmographics", "enrichment_source", "lead_score"],
+          "records_per_run_max": 50,
+          "create_records": false
+        }
+      },
+      { "name": "log_call_note", "constraints": { "objects": ["opportunity"] } }
+    ],
+    "deny": ["send_email", "send_message", "delete_record", "merge_records", "export_dataset"]
+  },
+  "data": {
+    "allow": ["crm.contact:read", "crm.account:read", "crm.opportunity:read", "public_web:read"],
+    "deny": ["crm.contact.notes.private", "finance.*", "hr.*"]
+  },
+  "recipients": { "allow": [], "max_per_run": 0 },
+  "limits": {
+    "max_tool_calls": 150,
+    "max_records": 50,
+    "max_spend_usd": 8,
+    "max_runtime_seconds": 900
+  },
+  "escalate": [
+    { "when": "tool == 'crm_write' and field == 'lead_score' and delta > 30", "to": "revops-owner", "timeout_seconds": 86400 },
+    { "when": "tool == 'crm_write' and create_records == true", "to": "revops-owner", "timeout_seconds": 86400 },
+    { "when": "research.source_contains_instructions", "to": "revops-owner", "timeout_seconds": 3600 }
+  ],
+  "on_no_response": "deny"
+}

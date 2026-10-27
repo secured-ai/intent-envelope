@@ -1,0 +1,38 @@
+{
+  "intent_envelope": "0.1",
+  "id": "healthcare-policy-rag",
+  "revision": 6,
+  "purpose": "Answer staff questions from internal policy and records, returning only what the asking staff member is already entitled to read in the source system.",
+  "principal": {
+    "agent_identity": "policy-rag-agent",
+    "on_behalf_of": "session.staff_principal"
+  },
+  "tools": {
+    "allow": [
+      {
+        "name": "vector_search",
+        "constraints": {
+          "collections": ["clinical-policy", "operations-handbook"],
+          "authorization": "query_time_source_acl",
+          "top_k_max": 8
+        }
+      },
+      {
+        "name": "fetch_document",
+        "constraints": { "authorization": "query_time_source_acl" }
+      }
+    ],
+    "deny": ["http_request", "send_email", "write_document", "export_dataset"]
+  },
+  "data": {
+    "allow": ["clinical-policy:read:acl", "operations-handbook:read:acl"],
+    "deny": ["ehr.patient_records", "billing.*", "hr.personnel_files"]
+  },
+  "recipients": { "allow": [], "max_per_run": 0 },
+  "limits": { "max_tool_calls": 20, "max_records": 50, "max_runtime_seconds": 120 },
+  "escalate": [
+    { "when": "retrieval.acl_check_unavailable", "to": "clinical-ops-oncall", "timeout_seconds": 600 }
+  ],
+  "expires": "2027-06-30T00:00:00Z",
+  "on_no_response": "deny"
+}
