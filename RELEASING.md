@@ -31,3 +31,11 @@ anything reaches PyPI.
 
 A version can never be reused on PyPI, even after deletion. `0.0.0` was the name
 reservation, so the first functional release is `0.0.1`.
+
+## The schema is stored twice, on purpose
+
+`schema/intent-envelope-0.1.json` is canonical. A byte-identical copy lives at
+`packages/python/src/intent_envelope/schema/` so the Python package carries its own
+schema and does not reach outside its own directory at build time, which an sdist
+cannot do. CI fails if the two copies drift, so change the canonical one and copy it
+across in the same commit.

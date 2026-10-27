@@ -29,6 +29,3 @@ Repository = "https://github.com/secured-ai/intent-envelope"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/intent_envelope"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"../../schema/intent-envelope-0.1.json" = "intent_envelope/schema/intent-envelope-0.1.json"

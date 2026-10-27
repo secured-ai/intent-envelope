@@ -40,3 +40,14 @@ jobs:
             fi
           done
           echo "all invalid fixtures rejected"
+
+  schema-copy-matches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The packaged schema must match the canonical one
+        run: |
+          diff -u schema/intent-envelope-0.1.json \
+                  packages/python/src/intent_envelope/schema/intent-envelope-0.1.json \
+            || { echo "The copy under packages/python has drifted from schema/. Copy it across."; exit 1; }
+          echo "schema copy matches"
