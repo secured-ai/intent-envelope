@@ -38,9 +38,14 @@ def _where(error: Any) -> str:
 
 def validate(envelope: Dict[str, Any]) -> None:
     """Validate an envelope. Returns None, raises ValidationError with every problem found."""
-    from jsonschema import Draft202012Validator
+    from jsonschema import Draft202012Validator, FormatChecker
 
-    validator = Draft202012Validator(load_schema())
+    # JSON Schema treats "format" as an annotation unless a checker is supplied, so
+    # without this the validator accepts expires: "NOT A DATE". That is not a harmless
+    # laxness here: section 3 denies every call under an expired envelope, which means an
+    # enforcement point has to parse the value. A string that passes validation and then
+    # fails to parse turns a deliberate expiry into undefined behaviour at the gate.
+    validator = Draft202012Validator(load_schema(), format_checker=FormatChecker())
     errors = sorted(validator.iter_errors(envelope), key=lambda e: list(e.absolute_path))
     if errors:
         raise ValidationError([f"{_where(e)}: {e.message}" for e in errors])
