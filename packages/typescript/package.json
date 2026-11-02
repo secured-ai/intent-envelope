@@ -1,0 +1,51 @@
+{
+  "name": "intent-envelope",
+  "version": "0.1.0",
+  "description": "Declare what an AI agent is for, and enforce it in code at every tool call.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "agents",
+    "security",
+    "intent",
+    "guardrails",
+    "mcp"
+  ],
+  "homepage": "https://securedai.org/agent-intent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/secured-ai/intent-envelope.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": "https://github.com/secured-ai/intent-envelope/issues",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "gen:schema": "node tools/gen-schema.mjs",
+    "prepack": "npm run build",
+    "smoke": "node tools/consumer-smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js"
+}

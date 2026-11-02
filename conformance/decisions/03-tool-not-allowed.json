@@ -1,0 +1,27 @@
+{
+  "name": "a tool outside the allow list is denied",
+  "spec_rule": 3,
+  "decided_by": "tools.allow",
+  "why_it_matters": "The agent proposed a tool nobody granted it. No jailbreak needed, and none of the model's reasoning is consulted.",
+  "envelope_ref": "../valid/fintech-support-chatbot.json",
+  "call": {
+    "tool": "issue_refund",
+    "arguments": {
+      "amount": 250
+    },
+    "data": [],
+    "recipients": []
+  },
+  "state": {
+    "now": "2026-11-02T12:00:00Z",
+    "tool_calls_made": 0,
+    "records_returned": 0,
+    "spend_usd": 0.0,
+    "runtime_seconds": 10,
+    "recipients_contacted": 0
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "tools.allow"
+  }
+}
