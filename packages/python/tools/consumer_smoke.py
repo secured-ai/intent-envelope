@@ -144,7 +144,12 @@ def main() -> int:
         print("installing the wheel into a clean environment")
         env_dir = scratch / "venv"
         venv.create(env_dir, with_pip=True)
-        python = env_dir / "bin" / "python"
+        # Windows puts executables in Scripts and adds .exe. Hardcoding bin/ is the
+        # same mistake the TypeScript smoke test made by assuming npm was not a .cmd.
+        windows = sys.platform == "win32"
+        bindir = env_dir / ("Scripts" if windows else "bin")
+        suffix = ".exe" if windows else ""
+        python = bindir / f"python{suffix}"
         run([str(python), "-m", "pip", "install", "--quiet", str(wheel)])
 
         app = scratch / "consumer.py"
@@ -152,7 +157,7 @@ def main() -> int:
         # cwd is the scratch directory, so the repository is not importable from here.
         print(run([str(python), str(app)], cwd=scratch).strip())
 
-        cli = run([str(env_dir / "bin" / "intent-envelope"), "--help"]).strip()
+        cli = run([str(bindir / f"intent-envelope{suffix}"), "--help"]).strip()
         if "validate" not in cli:
             print("the installed CLI does not offer validate")
             return 1
