@@ -1,0 +1,30 @@
+{
+  "name": "arguments outside a grant's constraints are denied",
+  "spec_rule": 4,
+  "decided_by": "tools.constraints",
+  "envelope_ref": "../valid/fintech-support-chatbot.json",
+  "call": {
+    "tool": "lookup_transactions",
+    "arguments": {
+      "customer_id": "session.authenticated_customer_id",
+      "max_window_days": 3650
+    },
+    "data": [
+      "transactions:read:own"
+    ],
+    "recipients": []
+  },
+  "state": {
+    "now": "2026-11-02T12:00:00Z",
+    "tool_calls_made": 0,
+    "records_returned": 0,
+    "spend_usd": 0.0,
+    "runtime_seconds": 10,
+    "recipients_contacted": 0
+  },
+  "note": "The tool is allowed and the customer is right. The window is ten years instead of one.",
+  "expect": {
+    "result": "deny",
+    "rule": "tools.constraints"
+  }
+}
