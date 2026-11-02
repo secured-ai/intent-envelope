@@ -41,6 +41,49 @@ jobs:
           done
           echo "all invalid fixtures rejected"
 
+  typescript:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.18"
+      - name: Install
+        run: npm ci
+      - name: Types, including the tests
+        run: npm run typecheck
+      - name: Conformance cases and enforcement suite
+        run: npm test
+      # The suite runs against the source tree, where Node strips types happily. It
+      # cannot see the failure that matters at publish time: Node refuses to strip
+      # types under node_modules, so a package pointing at its own .ts sources throws
+      # on a consumer's first import. This packs, installs and makes a decision.
+      - name: The packaged install works
+        run: npm run smoke
+
+  # Each package passing its own suite proves only that it agrees with itself. This
+  # runs both over the same case files and diffs the answers, which is the claim the
+  # specification makes: an envelope means the same thing whichever point reads it.
+  cross-implementation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.18"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install the Python package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./packages/python
+      - name: Both implementations decide every case the same way
+        run: node tools/cross-check.mjs
+
   schema-copy-matches:
     runs-on: ubuntu-latest
     steps:
@@ -58,14 +101,18 @@ jobs:
   # dependency fails, and a skipped required check never reports a failure.
   all-checks-passed:
     if: always()
-    needs: [conformance, schema-copy-matches]
+    needs: [conformance, typescript, cross-implementation, schema-copy-matches]
     runs-on: ubuntu-latest
     steps:
       - name: Every required job must have succeeded
         run: |
-          echo "conformance:        ${{ needs.conformance.result }}"
-          echo "schema-copy-matches: ${{ needs['schema-copy-matches'].result }}"
+          echo "conformance:          ${{ needs.conformance.result }}"
+          echo "typescript:           ${{ needs.typescript.result }}"
+          echo "cross-implementation: ${{ needs['cross-implementation'].result }}"
+          echo "schema-copy-matches:  ${{ needs['schema-copy-matches'].result }}"
           if [ "${{ needs.conformance.result }}" != "success" ] || \
+             [ "${{ needs.typescript.result }}" != "success" ] || \
+             [ "${{ needs['cross-implementation'].result }}" != "success" ] || \
              [ "${{ needs['schema-copy-matches'].result }}" != "success" ]; then
             echo "A required job did not succeed."
             exit 1

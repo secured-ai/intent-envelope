@@ -1,0 +1,21 @@
+// What gets published.
+//
+// The sources import each other with explicit .ts extensions, because that is what
+// Node's native type stripping requires when running the tests straight from this
+// tree. Node refuses to strip types for anything under node_modules, so a published
+// package that pointed at those sources would throw ERR_UNSUPPORTED_NODE_MODULES_
+// TYPE_STRIPPING on the consumer's first import. rewriteRelativeImportExtensions
+// turns those .ts specifiers into .js on the way out, so one set of sources serves
+// both: run directly here, compiled for everyone else.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

@@ -226,7 +226,7 @@ def _limit_exceeded(limits: Dict[str, Any], call: Call, state: RunState) -> Opti
     max_spend = limits.get("max_spend_usd")
     if max_spend is not None and state.spend_usd + call.estimated_cost_usd > max_spend:
         total = state.spend_usd + call.estimated_cost_usd
-        return f"this call would take spend to {total:.2f} of a permitted {max_spend}"
+        return f"this call would take spend to {total:.2f} of a permitted {max_spend:.2f}"
 
     max_records = limits.get("max_records")
     if max_records is not None and state.records_returned >= max_records:
