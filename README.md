@@ -46,15 +46,47 @@ and the page saying so trips an escalation to a named human.
 | `spec/v0.1.md` | The specification. One page. |
 | `schema/intent-envelope-0.1.json` | JSON Schema, published at `https://securedai.org/schemas/intent-envelope/0.1.json` |
 | `examples/` | Worked envelopes from three real engagements, anonymized |
-| `conformance/` | Envelopes that must validate, and envelopes that must not |
-| `packages/python/` | The `intent-envelope` validator and CLI |
+| `conformance/valid`, `conformance/invalid` | Envelopes that must validate, and envelopes that must not |
+| `conformance/decisions/` | Proposed calls, and what an enforcement point must decide about each |
+| `packages/python/` | The `intent-envelope` validator, evaluator and enforcement point |
+| `examples/demo_poisoned_document.py` | A runnable demo: an agent reads a poisoned invoice and is refused |
 
 ## Try it
+
+Check that an envelope is well formed:
 
 ```
 pip install intent-envelope
 intent-envelope validate examples/crm-enrichment-agent.json
 ```
+
+Enforce one at the tool-call boundary. `guard` wraps an existing tool-call function,
+including an MCP client's, so the check happens before the call rather than after:
+
+```python
+from intent_envelope import EnforcementPoint, Refused
+
+point = EnforcementPoint(envelope)
+call_tool = point.guard(mcp_session.call_tool)
+
+try:
+    await call_tool("send_email", {"to": "someone@elsewhere.example"})
+except Refused as refusal:
+    print(refusal.decision.rule)    # recipients
+    print(refusal.decision.detail)  # someone@elsewhere.example is not on recipients.allow
+
+point.ledger()   # every decision, refused as well as allowed
+```
+
+See what that looks like against an actual prompt injection:
+
+```
+python examples/demo_poisoned_document.py
+```
+
+The agent in that demo believes the document every time. Nothing detects the injection,
+and no prompt asks the model to be careful. The exfiltration and the payment are
+refused anyway, because the envelope never granted them.
 
 ## The examples
 
@@ -76,7 +108,9 @@ anonymized and reduced to the envelope the remediated architecture enforces.
 ## Status
 
 Version 0.1 is a draft we are implementing against. The schema may change before 1.0,
-and section 8 of the spec lists what we have deliberately left open. If you are building
+and section 7 of the spec lists what we have deliberately left open: `data` addressing
+and the `escalate.when` expression syntax are supplied by the deployment, and the
+enforcement point takes both as arguments rather than guessing. If you are building
 agents and any of it is wrong for your deployment, open an issue. That is more useful to
 us than agreement.
 

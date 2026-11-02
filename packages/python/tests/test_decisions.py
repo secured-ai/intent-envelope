@@ -4,12 +4,6 @@ These were written before the evaluator, from specification section 3 and from t
 attack patterns in the incident library. The behaviour is pinned by the specification
 and by this suite, not by whatever the first implementation happens to do.
 
-Until `intent_envelope.evaluate` exists they are marked xfail(strict=True), so the
-branch is honest in both directions: CI stays green while there is nothing to evaluate,
-and the moment the evaluator starts returning correct answers these turn into XPASS
-failures that force the marker off. An expected failure that quietly becomes an
-expected pass is how a suite stops meaning anything.
-
 The cases are language-neutral JSON. The TypeScript port runs the same files.
 """
 
@@ -23,14 +17,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 CASES = sorted((ROOT / "conformance" / "decisions").glob("*.json"))
 
-# Imported lazily so collection still reports every case as a failure with a readable
-# reason, rather than erroring out at import time before any of them are listed.
-try:
-    from intent_envelope.evaluate import Call, RunState, evaluate  # type: ignore
-
-    EVALUATOR_MISSING = None
-except ImportError as exc:  # pragma: no cover - the state this suite starts in
-    EVALUATOR_MISSING = str(exc)
+from intent_envelope.evaluate import Call, RunState, evaluate
 
 
 def load_case(path: Path) -> dict:
@@ -66,14 +53,6 @@ def test_the_suite_covers_every_step_of_section_3():
     assert not missing, f"no decision case covers section 3 step(s): {sorted(missing)}"
 
 
-needs_evaluator = pytest.mark.xfail(
-    EVALUATOR_MISSING is not None,
-    reason="no evaluator yet: these cases are written first, from the specification",
-    strict=True,
-)
-
-
-@needs_evaluator
 @pytest.mark.parametrize("path", CASES, ids=lambda p: p.stem)
 def test_decision(path: Path):
     case = load_case(path)
@@ -95,7 +74,6 @@ def test_decision(path: Path):
     )
 
 
-@needs_evaluator
 @pytest.mark.parametrize("path", CASES, ids=lambda p: p.stem)
 def test_decision_produces_a_record(path: Path):
     """Section 5: every evaluation SHOULD produce one record, written where the decision
