@@ -32,6 +32,14 @@ jobs:
         run: python -m pytest packages/python/tests -q
       - name: CLI accepts every example
         run: intent-envelope validate examples/*.json
+      # The suite imports from the source tree. This builds the real artifacts and
+      # installs the wheel into a clean venv, which is the check that would have
+      # caught 0.0.1 going to PyPI without the evaluator or enforcement point.
+      - name: The packaged install works
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install build
+          python packages/python/tools/consumer_smoke.py
       - name: CLI rejects every invalid fixture
         run: |
           for f in conformance/invalid/*.json; do
@@ -95,13 +103,39 @@ jobs:
             || { echo "The copy under packages/python has drifted from schema/. Copy it across."; exit 1; }
           echo "schema copy matches"
 
+  # The two packages are one release at one version. Checked on every pull request
+  # rather than only at release time, because discovering it from a failed publish
+  # means a tag already exists for a version that cannot ship.
+  versions-agree:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.18"
+      - name: Python, TypeScript and the module all declare the same version
+        run: |
+          PY=$(grep -m1 -oP '^version = "\K[^"]+' packages/python/pyproject.toml)
+          MOD=$(grep -m1 -oP '^__version__ = "\K[^"]+' packages/python/src/intent_envelope/__init__.py)
+          TS=$(node -p "require('./packages/typescript/package.json').version")
+          TSMOD=$(grep -m1 -oP "VERSION = '\K[^']+" packages/typescript/src/index.ts)
+          echo "pyproject.toml      $PY"
+          echo "__init__.py         $MOD"
+          echo "package.json        $TS"
+          echo "src/index.ts        $TSMOD"
+          if [ "$PY" != "$MOD" ] || [ "$PY" != "$TS" ] || [ "$TS" != "$TSMOD" ]; then
+            echo "These must all agree. A release tags one version for both packages."
+            exit 1
+          fi
+          echo "all four agree on $PY"
+
   # One stable name for branch protection to require. The matrix can gain or lose a
   # Python version without the ruleset silently waiting on a check name that no
   # longer exists. always() matters: without it this job is skipped when a
   # dependency fails, and a skipped required check never reports a failure.
   all-checks-passed:
     if: always()
-    needs: [conformance, typescript, cross-implementation, schema-copy-matches]
+    needs: [conformance, typescript, cross-implementation, schema-copy-matches, versions-agree]
     runs-on: ubuntu-latest
     steps:
       - name: Every required job must have succeeded
@@ -110,10 +144,12 @@ jobs:
           echo "typescript:           ${{ needs.typescript.result }}"
           echo "cross-implementation: ${{ needs['cross-implementation'].result }}"
           echo "schema-copy-matches:  ${{ needs['schema-copy-matches'].result }}"
+          echo "versions-agree:       ${{ needs['versions-agree'].result }}"
           if [ "${{ needs.conformance.result }}" != "success" ] || \
              [ "${{ needs.typescript.result }}" != "success" ] || \
              [ "${{ needs['cross-implementation'].result }}" != "success" ] || \
-             [ "${{ needs['schema-copy-matches'].result }}" != "success" ]; then
+             [ "${{ needs['schema-copy-matches'].result }}" != "success" ] || \
+             [ "${{ needs['versions-agree'].result }}" != "success" ]; then
             echo "A required job did not succeed."
             exit 1
           fi
