@@ -1,0 +1,76 @@
+name: Release to npm
+
+# Publishes packages/typescript when a GitHub release is published.
+#
+# Authentication is npm Trusted Publishing over OIDC, so no NPM_TOKEN is stored in
+# this repository. That requires the package to already exist on npm, which a brand
+# new name does not, so the very first publish is a manual one. RELEASING.md has the
+# bootstrap sequence.
+#
+# Provenance is generated automatically when publishing this way from a public
+# repository, so there is no --provenance flag here. It is what lets someone verify
+# that the tarball on npm was built from this commit in this repository, which for a
+# package that enforces security policy is worth more than the usual amount.
+#
+# Actions are pinned to commit SHAs, kept current by Dependabot.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/typescript
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Install
+        run: npm ci
+      - name: Types, suite and packaged install
+        run: |
+          npm run typecheck
+          npm test
+          npm run smoke
+      - name: Verify the tag matches the package version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "Tag $TAG does not match package.json version $VERSION"; exit 1
+          fi
+          echo "version $VERSION matches tag"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    defaults:
+      run:
+        working-directory: packages/typescript
+    permissions:
+      # The critical requirement: without this, npm cannot get an OIDC token and the
+      # publish falls back to looking for a credential that is deliberately absent.
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: npm 11.5.1 or newer is required for trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+      - name: Install
+        run: npm ci
+      # prepack builds dist, so the tarball is the one the smoke test exercised.
+      - name: Publish
+        run: npm publish --access public

@@ -49,6 +49,8 @@ and the page saying so trips an escalation to a named human.
 | `conformance/valid`, `conformance/invalid` | Envelopes that must validate, and envelopes that must not |
 | `conformance/decisions/` | Proposed calls, and what an enforcement point must decide about each |
 | `packages/python/` | The `intent-envelope` validator, evaluator and enforcement point |
+| `packages/typescript/` | The same three in TypeScript, with no runtime dependencies |
+| `tools/cross-check.mjs` | Runs both implementations over every decision case and diffs the answers |
 | `examples/demo_poisoned_document.py` | A runnable demo: an agent reads a poisoned invoice and is refused |
 
 ## Try it
@@ -87,6 +89,36 @@ python examples/demo_poisoned_document.py
 The agent in that demo believes the document every time. Nothing detects the injection,
 and no prompt asks the model to be careful. The exfiltration and the payment are
 refused anyway, because the envelope never granted them.
+
+## In TypeScript
+
+```
+npm install intent-envelope
+```
+
+```ts
+import { EnforcementPoint, Refused } from 'intent-envelope';
+
+const point = new EnforcementPoint(envelope);
+const callTool = point.guard(mcpSession.callTool);
+
+try {
+  await callTool('send_email', { to: 'someone@elsewhere.example' });
+} catch (error) {
+  if (error instanceof Refused) {
+    error.decision.rule;   // 'recipients'
+    error.decision.detail; // someone@elsewhere.example is not on recipients.allow
+  }
+}
+```
+
+Same nine-step evaluation order, same decisions, no runtime dependencies. Both
+implementations run the same case files in `conformance/decisions/`, and
+`node tools/cross-check.mjs` runs the two over every case and diffs the answers.
+
+Each package passing its own suite proves only that it agrees with itself. That script
+proves the two agree with each other, which is what the specification actually claims:
+an envelope means the same thing whichever enforcement point reads it.
 
 ## The examples
 
