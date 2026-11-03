@@ -4,10 +4,17 @@ name: Release to PyPI
 # Authentication is PyPI Trusted Publishing over OIDC: no API token is stored
 # in this repository, and nothing to leak or rotate.
 # Actions are pinned to commit SHAs, kept current by Dependabot.
+#
+# workflow_dispatch runs everything except the publish: the build, the metadata
+# check, and the artifact handoff between the two jobs. Nothing else in this
+# repository exercises this file, so a change to it is otherwise first tested by
+# cutting a real release, which is the worst place to discover a mistake.
+# Run it from Actions, "Release to PyPI", Run workflow, against any branch.
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,6 +36,7 @@ jobs:
           python -m pip install twine
           python -m twine check dist/*
       - name: Verify the tag matches the package version
+        if: github.event_name == 'release'
         run: |
           VERSION=$(python -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('packages/python/pyproject.toml').read_text())['project']['version'])")
           TAG="${GITHUB_REF_NAME#v}"
@@ -41,7 +49,28 @@ jobs:
           name: dist
           path: dist/
 
+  # Only on a dispatch, because on a release the publish job proves the same thing
+  # by doing it. This is what makes a bump of upload-artifact or download-artifact
+  # testable: those two have to agree with each other, and nothing else here checks
+  # that the dist built in one job arrives intact in the next.
+  verify-artifact-roundtrip:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      - name: The wheel and the sdist survived the handoff
+        run: |
+          ls -l dist/
+          ls dist/*.whl >/dev/null 2>&1 || { echo "no wheel in the downloaded artifact"; exit 1; }
+          ls dist/*.tar.gz >/dev/null 2>&1 || { echo "no sdist in the downloaded artifact"; exit 1; }
+          echo "upload-artifact and download-artifact agree"
+
   publish:
+    if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
