@@ -68,10 +68,14 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      # v6 to match npm's own reference workflow for trusted publishing. v4 writes a
+      # deprecated always-auth into .npmrc, and caching is off because npm documents
+      # that a release build should never restore a cache.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
       # Trusted publishing needs 11.5.1 or newer; the stage subcommands need 11.15.
       - name: npm 11.15 or newer is required for staging
         run: |
