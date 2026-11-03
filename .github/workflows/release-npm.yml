@@ -1,16 +1,23 @@
 name: Release to npm
 
-# Publishes packages/typescript when a GitHub release is published.
+# Stages packages/typescript when a GitHub release is published. It does not publish.
+#
+# This workflow cannot make anything installable on its own, by design. `npm stage
+# publish` puts the tarball in a queue that the public cannot install from, and a
+# maintainer then runs `npm stage approve <stage-id>` and answers a 2FA challenge to
+# release it. A compromised workflow, a stolen OIDC token or a bad merge can therefore
+# queue a release, but cannot ship one. For a package whose whole job is enforcing
+# what an agent may do, that is the right shape: the same argument this project makes
+# about agents applies to its own release pipeline.
+#
+# The npm trusted publisher for this package is configured stage-only, so `npm
+# publish` from here is rejected by the registry rather than merely discouraged.
 #
 # Authentication is npm Trusted Publishing over OIDC, so no NPM_TOKEN is stored in
-# this repository. That requires the package to already exist on npm, which a brand
-# new name does not, so the very first publish is a manual one. RELEASING.md has the
-# bootstrap sequence.
+# this repository. Staging never prompts for 2FA, which is what lets it run
+# unattended; approval always does, which is what makes it a gate.
 #
-# Provenance is generated automatically when publishing this way from a public
-# repository, so there is no --provenance flag here. It is what lets someone verify
-# that the tarball on npm was built from this commit in this repository, which for a
-# package that enforces security policy is worth more than the usual amount.
+# RELEASING.md has the approval steps and the one-time setup.
 #
 # Actions are pinned to commit SHAs, kept current by Dependabot.
 
@@ -48,7 +55,7 @@ jobs:
           fi
           echo "version $VERSION matches tag"
 
-  publish:
+  stage:
     needs: build
     runs-on: ubuntu-latest
     environment: npm
@@ -57,7 +64,7 @@ jobs:
         working-directory: packages/typescript
     permissions:
       # The critical requirement: without this, npm cannot get an OIDC token and the
-      # publish falls back to looking for a credential that is deliberately absent.
+      # staging falls back to looking for a credential that is deliberately absent.
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -65,12 +72,23 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      - name: npm 11.5.1 or newer is required for trusted publishing
+      # Trusted publishing needs 11.5.1 or newer; the stage subcommands need 11.15.
+      - name: npm 11.15 or newer is required for staging
         run: |
-          npm install -g npm@^11.5.1
+          npm install -g npm@^11.15.0
           npm --version
       - name: Install
         run: npm ci
       # prepack builds dist, so the tarball is the one the smoke test exercised.
-      - name: Publish
-        run: npm publish --access public
+      # --provenance is explicit rather than relied upon: it is what lets anyone
+      # verify the tarball was built from this commit, and a release that silently
+      # lost its attestation would be worse than one that failed to stage.
+      - name: Stage for a maintainer to approve
+        run: npm stage publish --access public --provenance
+      - name: Say what has to happen next
+        run: |
+          echo "Staged. Nothing is installable yet."
+          echo "Approve it with 2FA:"
+          echo "  npm stage list intent-envelope"
+          echo "  npm stage approve <stage-id>"
+          echo "Or reject it:  npm stage reject <stage-id>"

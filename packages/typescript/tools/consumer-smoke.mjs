@@ -23,18 +23,47 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+
+function exec(cmd, args, cwd, shell = false) {
+  return execFileSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+    shell,
+  });
+}
+
+/**
+ * Run npm in a way that works on every platform.
+ *
+ * On Windows `npm` is a .cmd shim, and since the fix for CVE-2024-27980 Node refuses
+ * to spawn .cmd files without a shell, so execFileSync('npm', ...) fails with ENOENT.
+ * Running npm's own entry point through this Node binary avoids the shim altogether
+ * and behaves identically everywhere. npm sets npm_execpath when it runs a script, so
+ * `npm run smoke` takes that path; a direct `node tools/consumer-smoke.mjs` falls back
+ * to the shim, quoting arguments because a Windows profile path contains spaces.
+ */
+function npm(args, cwd) {
+  if (process.env.npm_execpath) {
+    return exec(process.execPath, [process.env.npm_execpath, ...args], cwd);
+  }
+  if (process.platform === 'win32') {
+    const quoted = args.map((a) => (/[\s"]/.test(a) ? `"${a}"` : a));
+    return exec('npm.cmd', quoted, cwd, true);
+  }
+  return exec('npm', args, cwd);
+}
 
 const scratch = mkdtempSync(join(tmpdir(), 'intent-envelope-consumer-'));
 let failed = false;
 
 try {
   // prepack runs the build, so this is the same tarball `npm publish` would upload.
-  const tarball = run('npm', ['pack', '--silent', '--pack-destination', scratch], PKG).trim();
+  const tarball = npm(['pack', '--silent', '--pack-destination', scratch], PKG).trim();
   console.log(`packed ${tarball}`);
 
   writeFileSync(join(scratch, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
-  run('npm', ['install', '--silent', '--no-audit', '--no-fund', join(scratch, tarball)], scratch);
+  npm(['install', '--silent', '--no-audit', '--no-fund', join(scratch, tarball)], scratch);
 
   const app = `
 import { EnforcementPoint, Refused, evaluate, validate } from 'intent-envelope';
@@ -82,7 +111,8 @@ await import('node:fs').then(({ accessSync }) =>
 console.log('the installed package validates, decides, refuses, and ships types');
 `;
   writeFileSync(join(scratch, 'app.mjs'), app);
-  process.stdout.write(run('node', ['app.mjs'], scratch));
+  // process.execPath rather than 'node', which need not be on PATH.
+  process.stdout.write(exec(process.execPath, ['app.mjs'], scratch));
 } catch (error) {
   failed = true;
   console.error(`\nthe packaged install failed: ${error.message.split('\n')[0]}`);

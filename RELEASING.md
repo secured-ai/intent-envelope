@@ -7,10 +7,19 @@ skew between them is a question nobody should have to answer.
 Neither registry holds an API token in this repository. Both publish through Trusted
 Publishing over OIDC, so there is nothing here to leak or rotate.
 
-| Package | Registry | Workflow | Environment |
-| --- | --- | --- | --- |
-| `packages/python` | PyPI | `release.yml` | `pypi` |
-| `packages/typescript` | npm | `release-npm.yml` | `npm` |
+| Package | Registry | Workflow | Environment | How it ships |
+| --- | --- | --- | --- | --- |
+| `packages/python` | PyPI | `release.yml` | `pypi` | Published once the environment reviewer approves the run |
+| `packages/typescript` | npm | `release-npm.yml` | `npm` | Staged, then released by `npm stage approve` with 2FA |
+
+The npm side cannot publish. `release-npm.yml` runs `npm stage publish`, which queues
+a tarball the public cannot install, and a maintainer releases it by answering a 2FA
+challenge. A compromised workflow, a stolen OIDC token or a bad merge can queue a
+release but cannot ship one. The trusted publisher is configured stage-only, so a
+plain `npm publish` from CI is rejected by the registry rather than merely discouraged.
+
+The same argument this project makes about agents applies to its own pipeline: the
+authority to act is granted narrowly and the irreversible step needs a human.
 
 CI checks on every pull request that `pyproject.toml`, `__init__.py`,
 `package.json` and `src/index.ts` all declare the same version. Finding that out from
@@ -29,9 +38,30 @@ ship.
 
 Both workflows run. Each builds its package, verifies the tag matches that package's
 own version, runs the tests and the packaged-install check, and then waits on its
-environment before publishing. A mismatch fails before anything reaches a registry.
+environment. A mismatch fails before anything reaches a registry.
 
-A version can never be reused on either registry, even after deletion.
+4. PyPI publishes once you approve the `pypi` environment.
+5. npm is staged, not published. Release it:
+
+   ```sh
+   npm stage list intent-envelope
+   npm stage approve <stage-id>
+   ```
+
+   That asks for a 2FA code. Before approving you can inspect exactly what would go
+   out, which is the point of the gate rather than a formality:
+
+   ```sh
+   npm stage view <stage-id>
+   npm stage download <stage-id>    # the actual tarball
+   ```
+
+   To abandon it instead, `npm stage reject <stage-id>`. A staged version occupies its
+   version number while it sits in the queue, so a rejected 0.2.0 has to come back as
+   0.2.1 rather than as another 0.2.0.
+
+The stage subcommands need npm 11.15 or newer locally. A version can never be reused
+on either registry, even after deletion.
 
 ## What the packaged-install check is for
 
@@ -70,20 +100,14 @@ click, which is worth it for a package other people will install.
 
 ## One-time setup on npm
 
-Not yet done. npm requires a package to exist before a trusted publisher can be
-configured for it, so a brand new name cannot start this way. The first publish is
-manual, and after that nothing is manual again.
+The name is claimed. `intent-envelope@0.0.0` was published manually on 2 November
+2026 for that purpose, because npm requires a package to exist before a trusted
+publisher can be configured for it, and a brand new name cannot start that way.
+0.0.0 is a name reservation and nothing more, the same role `0.0.0` served on PyPI.
 
-1. Create an npm granular access token with publish rights, scoped to this package.
-2. Publish once from your own machine, which also claims the name:
+What remains:
 
-   ```sh
-   cd packages/typescript
-   npm ci && npm test && npm run smoke
-   npm publish --access public
-   ```
-
-3. On https://www.npmjs.com/package/intent-envelope/access, open the Trusted
+1. On https://www.npmjs.com/package/intent-envelope/access, open the Trusted
    Publisher section and choose GitHub Actions:
 
    | Field | Value |
@@ -93,25 +117,50 @@ manual, and after that nothing is manual again.
    | Workflow filename | `release-npm.yml` |
    | Environment name | `npm` |
 
-4. Turn on the option requiring OIDC, which disables token publishing for this
-   package. This is the step that makes the rest of it mean anything, and it is easy
-   to skip.
-5. Delete the token from step 1.
-6. In this repository's Settings, Environments, create an environment named `npm`,
-   with yourself as a required reviewer.
+2. Under allowed actions, leave `npm publish` **off**. `npm stage publish` is always
+   permitted and is all this workflow uses. Leaving `npm publish` off is what makes
+   stage-only an enforced property rather than a convention: the registry rejects a
+   direct publish from CI even if the workflow is changed to attempt one.
+3. Turn on the option requiring OIDC, which disables token publishing for this
+   package entirely. This is the step that makes the rest of it mean anything, and it
+   is the easy one to skip.
+4. `npm logout` on any machine where you published manually, so the session token
+   that claimed the name stops working.
+5. In this repository's Settings, Environments, create an environment named `npm`.
 
-Two things worth knowing. npm does not validate a trusted publisher configuration
-when you save it, so a typo surfaces only at the next publish. And a new
-configuration expires if it does not complete a successful publish within two days,
-so do the setup when you are ready to cut a release rather than well ahead of it.
+### Why the npm environment has no required reviewer
+
+`pypi` has one because it is the only human gate on that side: PyPI publishes the
+moment the run is approved. On npm the gate is `npm stage approve` with 2FA, which
+happens after the workflow has finished and inspects the actual artifact rather than
+the intention to build one. Requiring a reviewer as well would mean two approvals per
+release for one decision, and the second click would be the weaker of the two.
+
+The environment is still declared, because the trusted publisher configuration is
+scoped to it. That restricts which workflow runs can obtain an OIDC token at all.
+
+Add a reviewer if you would rather gate token issuance too. It is a real defence, just
+a redundant one here.
+
+### Two npm quirks
+
+npm does not validate a trusted publisher configuration when you save it, so a typo
+surfaces only at the next release. And a new configuration expires if it has not
+completed a successful publish within two days, so do this when you are ready to tag
+rather than well ahead of it.
 
 ### Provenance
 
-npm generates a provenance attestation automatically when publishing this way from a
-public repository, which is why `release-npm.yml` passes no `--provenance` flag. It
-lets anyone verify the tarball on npm was built from a specific commit in this
-repository. For a package whose job is to enforce what an agent may do, being able to
-prove the published artifact came from reviewed source is worth more than usual.
+`release-npm.yml` passes `--provenance` explicitly. npm generates an attestation
+automatically when staging this way from a public repository, so the flag is
+belt-and-braces: a release that silently lost its attestation would be worse than one
+that failed to stage. Provenance is what lets anyone verify the tarball on npm was
+built from a specific commit in this repository. For a package whose job is to enforce
+what an agent may do, being able to prove the published artifact came from reviewed
+source is worth more than usual.
+
+Note that `0.0.0` has no provenance, because it was published by hand. Every version
+from 0.1.0 onwards does.
 
 ## The schema is stored twice, on purpose
 
