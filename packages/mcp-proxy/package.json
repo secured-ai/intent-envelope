@@ -1,6 +1,6 @@
 {
   "name": "intent-envelope-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Enforce an intent envelope on an MCP server: refuse a tool call before it reaches the server.",
   "license": "Apache-2.0",
   "type": "module",
@@ -41,7 +41,7 @@
     "node": ">=22.18"
   },
   "dependencies": {
-    "intent-envelope": "^0.1.0"
+    "intent-envelope": ">=0.1.0 <1.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
