@@ -36,7 +36,7 @@ jobs:
         working-directory: packages/typescript
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
       - name: Install
@@ -71,7 +71,7 @@ jobs:
       # v6 to match npm's own reference workflow for trusted publishing. v4 writes a
       # deprecated always-auth into .npmrc, and caching is off because npm documents
       # that a release build should never restore a cache.
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
