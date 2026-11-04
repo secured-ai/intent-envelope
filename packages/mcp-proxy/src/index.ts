@@ -9,4 +9,4 @@ export { ConfigError, USAGE, parse, type Config } from './config.ts';
 export { fileLedger, memoryLedger, type Ledger } from './ledger.ts';
 export { DENIED, ESCALATION_REQUIRED, Relay, type RelayOptions } from './relay.ts';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';

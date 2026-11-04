@@ -1,6 +1,7 @@
 name: Release to npm
 
-# Stages packages/typescript when a GitHub release is published. It does not publish.
+# Stages every npm package in this repository when a GitHub release is published.
+# It does not publish any of them.
 #
 # This workflow cannot make anything installable on its own, by design. `npm stage
 # publish` puts the tarball in a queue that the public cannot install from, and a
@@ -31,9 +32,15 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # One release tags every package at one version, so each is built, tested and
+    # staged independently rather than one standing in for the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [typescript, mcp-proxy]
     defaults:
       run:
-        working-directory: packages/typescript
+        working-directory: packages/${{ matrix.package }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -59,9 +66,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: npm
+    strategy:
+      # Not fail-fast: if one package cannot stage, the other should still reach the
+      # queue rather than being cancelled for its neighbour's problem.
+      fail-fast: false
+      matrix:
+        package: [typescript, mcp-proxy]
     defaults:
       run:
-        working-directory: packages/typescript
+        working-directory: packages/${{ matrix.package }}
     permissions:
       # The critical requirement: without this, npm cannot get an OIDC token and the
       # staging falls back to looking for a credential that is deliberately absent.
@@ -91,8 +104,10 @@ jobs:
         run: npm stage publish --access public --provenance
       - name: Say what has to happen next
         run: |
-          echo "Staged. Nothing is installable yet."
+          NAME=$(node -p "require('./package.json').name")
+          echo "Staged $NAME. Nothing is installable yet."
           echo "Approve it with 2FA:"
-          echo "  npm stage list intent-envelope"
-          echo "  npm stage approve <stage-id>"
-          echo "Or reject it:  npm stage reject <stage-id>"
+          echo "  npm stage list $NAME"
+          echo "  npm stage approve <the id that prints>"
+          echo "Or reject it:  npm stage reject <the id that prints>"
+          echo "Each package is approved separately."
