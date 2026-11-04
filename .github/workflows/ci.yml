@@ -72,6 +72,35 @@ jobs:
       - name: The packaged install works
         run: npm run smoke
 
+  # The proxy is the enforcement point as a deployable thing, so its suite drives it
+  # over real pipes against a server that records what it was asked. The assertion that
+  # matters is that a refused call is absent from that record.
+  mcp-proxy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/mcp-proxy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.18"
+      - name: Install
+        run: npm ci
+      - name: Types
+        run: npm run typecheck
+      - name: Enforcement over the wire protocol
+        run: npm test
+      # This package ships a bin, which is the kind of thing that works in the source
+      # tree and fails on install.
+      - name: The packaged install refuses a call
+        run: npm run smoke
+      - name: The demo still tells its story
+        run: |
+          node demo/poisoned-invoice.mjs | tee /tmp/demo.txt
+          grep -q "2 allowed, 2 refused, 1 escalated" /tmp/demo.txt \
+            || { echo "the demo no longer produces the outcome its narration claims"; exit 1; }
+
   # Each package passing its own suite proves only that it agrees with itself. This
   # runs both over the same case files and diffs the answers, which is the claim the
   # specification makes: an envelope means the same thing whichever point reads it.
@@ -119,15 +148,21 @@ jobs:
           MOD=$(grep -m1 -oP '^__version__ = "\K[^"]+' packages/python/src/intent_envelope/__init__.py)
           TS=$(node -p "require('./packages/typescript/package.json').version")
           TSMOD=$(grep -m1 -oP "VERSION = '\K[^']+" packages/typescript/src/index.ts)
-          echo "pyproject.toml      $PY"
-          echo "__init__.py         $MOD"
-          echo "package.json        $TS"
-          echo "src/index.ts        $TSMOD"
-          if [ "$PY" != "$MOD" ] || [ "$PY" != "$TS" ] || [ "$TS" != "$TSMOD" ]; then
-            echo "These must all agree. A release tags one version for both packages."
-            exit 1
-          fi
-          echo "all four agree on $PY"
+          MCP=$(node -p "require('./packages/mcp-proxy/package.json').version")
+          MCPMOD=$(grep -m1 -oP "VERSION = '\K[^']+" packages/mcp-proxy/src/index.ts)
+          echo "python  pyproject.toml   $PY"
+          echo "python  __init__.py      $MOD"
+          echo "ts      package.json     $TS"
+          echo "ts      src/index.ts     $TSMOD"
+          echo "mcp     package.json     $MCP"
+          echo "mcp     src/index.ts     $MCPMOD"
+          for v in "$MOD" "$TS" "$TSMOD" "$MCP" "$MCPMOD"; do
+            if [ "$v" != "$PY" ]; then
+              echo "These must all agree. A release tags one version for every package."
+              exit 1
+            fi
+          done
+          echo "all six agree on $PY"
 
   # One stable name for branch protection to require. The matrix can gain or lose a
   # Python version without the ruleset silently waiting on a check name that no
@@ -135,18 +170,20 @@ jobs:
   # dependency fails, and a skipped required check never reports a failure.
   all-checks-passed:
     if: always()
-    needs: [conformance, typescript, cross-implementation, schema-copy-matches, versions-agree]
+    needs: [conformance, typescript, mcp-proxy, cross-implementation, schema-copy-matches, versions-agree]
     runs-on: ubuntu-latest
     steps:
       - name: Every required job must have succeeded
         run: |
           echo "conformance:          ${{ needs.conformance.result }}"
           echo "typescript:           ${{ needs.typescript.result }}"
+          echo "mcp-proxy:            ${{ needs['mcp-proxy'].result }}"
           echo "cross-implementation: ${{ needs['cross-implementation'].result }}"
           echo "schema-copy-matches:  ${{ needs['schema-copy-matches'].result }}"
           echo "versions-agree:       ${{ needs['versions-agree'].result }}"
           if [ "${{ needs.conformance.result }}" != "success" ] || \
              [ "${{ needs.typescript.result }}" != "success" ] || \
+             [ "${{ needs['mcp-proxy'].result }}" != "success" ] || \
              [ "${{ needs['cross-implementation'].result }}" != "success" ] || \
              [ "${{ needs['schema-copy-matches'].result }}" != "success" ] || \
              [ "${{ needs['versions-agree'].result }}" != "success" ]; then

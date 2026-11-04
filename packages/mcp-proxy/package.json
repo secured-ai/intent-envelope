@@ -1,0 +1,57 @@
+{
+  "name": "intent-envelope-mcp",
+  "version": "0.1.0",
+  "description": "Enforce an intent envelope on an MCP server: refuse a tool call before it reaches the server.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "intent-envelope-mcp": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "ai",
+    "agents",
+    "security",
+    "intent",
+    "guardrails",
+    "proxy"
+  ],
+  "homepage": "https://securedai.org/agent-intent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/secured-ai/intent-envelope.git",
+    "directory": "packages/mcp-proxy"
+  },
+  "bugs": "https://github.com/secured-ai/intent-envelope/issues",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "intent-envelope": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "smoke": "node tools/consumer-smoke.mjs",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  }
+}

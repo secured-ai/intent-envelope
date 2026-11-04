@@ -50,6 +50,7 @@ and the page saying so trips an escalation to a named human.
 | `conformance/decisions/` | Proposed calls, and what an enforcement point must decide about each |
 | `packages/python/` | The `intent-envelope` validator, evaluator and enforcement point |
 | `packages/typescript/` | The same three in TypeScript, with no runtime dependencies |
+| `packages/mcp-proxy/` | `intent-envelope-mcp`: enforces an envelope on an MCP server, in the wire protocol |
 | `tools/cross-check.mjs` | Runs both implementations over every decision case and diffs the answers |
 | `examples/demo_poisoned_document.py` | A runnable demo: an agent reads a poisoned invoice and is refused |
 
@@ -119,6 +120,32 @@ implementations run the same case files in `conformance/decisions/`, and
 Each package passing its own suite proves only that it agrees with itself. That script
 proves the two agree with each other, which is what the specification actually claims:
 an envelope means the same thing whichever enforcement point reads it.
+
+## On an MCP server, with no code changes
+
+`guard` above needs a line in your agent. This needs none: your client launches the
+proxy instead of the server, and every tool call crosses a process the agent cannot
+argue with.
+
+```sh
+npm install -g intent-envelope-mcp
+intent-envelope-mcp --envelope ./ap-agent.json -- npx -y @acme/invoice-mcp
+```
+
+```
+your agent  ──►  intent-envelope-mcp  ──►  the MCP server
+                 (decides, then forwards or refuses)
+```
+
+A refused call is never written to the server's stdin. See it against a prompt injection,
+where the agent believes the document completely and is refused anyway:
+
+```sh
+node packages/mcp-proxy/demo/poisoned-invoice.mjs
+```
+
+Details and the honest list of what it does not do are in
+[`packages/mcp-proxy/README.md`](packages/mcp-proxy/README.md).
 
 ## The examples
 
