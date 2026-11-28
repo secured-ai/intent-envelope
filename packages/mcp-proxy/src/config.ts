@@ -9,7 +9,18 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as core from 'intent-envelope';
 import { validate, type Envelope } from 'intent-envelope';
+
+/** What a component declares. Mirrors intent-envelope 0.3's ComponentManifest. */
+export interface ComponentManifest {
+  name: string;
+  version?: string;
+  tools: string[];
+  egress?: string[];
+  data?: string[];
+  processors?: string[];
+}
 
 export interface Config {
   envelope: Envelope;
@@ -18,6 +29,8 @@ export interface Config {
   args: string[];
   ledgerPath?: string;
   filterToolList: boolean;
+  /** 0.2. The manifest of the server being governed, admitted against the envelope at start. */
+  component?: ComponentManifest;
   /** Where escalations go to wait for a person. Absent: they are refused. */
   supervisor?: {
     url: string;
@@ -42,6 +55,10 @@ Options
   --envelope <path>    the envelope to enforce (or INTENT_ENVELOPE)
   --ledger <path>      append decisions here as JSON lines (or INTENT_ENVELOPE_LEDGER)
   --no-filter-tools    advertise every upstream tool, refusing the ones not granted
+  --component <path>   the server's manifest: the tools it brings and the hosts it
+                       reaches. Refused at start if any of it is outside the envelope
+                       (or INTENT_ENVELOPE_COMPONENT). Required when the envelope sets
+                       components.require_manifest.
   --help
 
 Escalations wait for a person when a Supervisor Check service is given (all four):
@@ -73,6 +90,7 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
   let envelopePath = env.INTENT_ENVELOPE;
   let ledgerPath = env.INTENT_ENVELOPE_LEDGER;
   let filterToolList = true;
+  let componentPath = env.INTENT_ENVELOPE_COMPONENT;
   let supUrl = env.INTENT_ENVELOPE_SUPERVISOR;
   let supCaller = env.INTENT_ENVELOPE_SUPERVISOR_CALLER;
   let supKey = env.INTENT_ENVELOPE_SUPERVISOR_KEY;
@@ -83,6 +101,7 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
     if (flag === '--envelope') envelopePath = flags[++i];
     else if (flag === '--ledger') ledgerPath = flags[++i];
     else if (flag === '--no-filter-tools') filterToolList = false;
+    else if (flag === '--component') componentPath = flags[++i];
     else if (flag === '--supervisor') supUrl = flags[++i];
     else if (flag === '--supervisor-caller') supCaller = flags[++i];
     else if (flag === '--supervisor-key') supKey = flags[++i];
@@ -106,6 +125,29 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
   // Fail closed. An enforcement point that starts with an envelope it cannot understand
   // is worse than one that does not start, because the client will assume it is running.
   validate(envelope);
+
+  // 0.2 component admission. Checked here, before the server is even started, so a
+  // component that would join read access to outbound reach never runs at all.
+  let component: ComponentManifest | undefined;
+  if (componentPath) {
+    try {
+      component = JSON.parse(readFileSync(resolve(componentPath), 'utf8')) as ComponentManifest;
+    } catch (error) {
+      throw new ConfigError(`cannot read the component manifest at ${componentPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // Admission lives in the core package from 0.3. With an older core installed the
+    // manifest cannot be checked, and an unchecked manifest is not an admission.
+    const admit = (core as unknown as { admitComponent?: (e: Envelope, m: ComponentManifest) => { admitted: boolean; reasons: string[] } }).admitComponent;
+    if (typeof admit !== 'function') {
+      throw new ConfigError('--component needs intent-envelope 0.3 or newer installed beside this proxy');
+    }
+    const admission = admit(envelope, component);
+    if (!admission.admitted) {
+      throw new ConfigError(`the component ${component?.name ?? '(unnamed)'} is not admitted by ${envelope.id}:\n  - ${admission.reasons.join('\n  - ')}`);
+    }
+  } else if ((envelope as { components?: { require_manifest?: boolean } }).components?.require_manifest) {
+    throw new ConfigError(`${envelope.id} requires a component manifest (components.require_manifest), and none was given: pass --component`);
+  }
 
   // All or none. Half a supervisor configuration would read as "escalations wait" to the
   // operator and behave as "escalations are refused", or worse, fail on the first one.
@@ -141,6 +183,7 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
 
   return {
     envelope, envelopePath: path, command: rest[0], args: rest.slice(1), ledgerPath, filterToolList,
+    ...(component ? { component } : {}),
     ...(supervisor ? { supervisor } : {}),
   };
 }

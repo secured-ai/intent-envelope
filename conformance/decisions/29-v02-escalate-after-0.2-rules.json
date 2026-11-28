@@ -1,0 +1,36 @@
+{
+  "name": "escalation still comes last, after every 0.2 rule passes",
+  "spec_rule": 12,
+  "decided_by": "escalate",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "issue_refund",
+    "arguments": {
+      "max_amount_usd": 300
+    },
+    "egress": [
+      "api.payments.example.com"
+    ],
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-3",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    },
+    "context": {
+      "amount_usd": 300
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "escalate",
+    "rule": "escalate"
+  }
+}

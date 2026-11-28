@@ -61,6 +61,7 @@ had:
 | `--ledger <path>` | append decisions as JSON lines, or `INTENT_ENVELOPE_LEDGER` |
 | `--no-filter-tools` | advertise every upstream tool, refusing the ones not granted |
 | `--supervisor <url>` and three more | hold escalations for a person, see [below](#escalations-that-wait-for-a-person) |
+| `--component <path>` | the server's manifest, admitted against the envelope at start; see [Component admission](#component-admission) |
 
 An envelope that fails validation stops the process with exit code 2 before it accepts a
 message. An enforcement point that starts with an envelope it cannot understand is worse
@@ -100,6 +101,32 @@ Two codes, because collapsing them would turn "a named person must decide this" 
 | --- | --- |
 | `-32000` | refused by the envelope |
 | `-32001` | a named human must approve this call |
+
+## Component admission
+
+Intent Envelope 0.2 lets a server declare what it brings, in a manifest:
+
+```json
+{ "name": "orders-mcp", "version": "1.4.0",
+  "tools": ["orders_read", "issue_refund"],
+  "egress": ["api.payments.example.com"] }
+```
+
+```sh
+intent-envelope-mcp --envelope ./refund-desk.json --component ./orders-mcp.manifest.json -- npx -y @acme/orders-mcp
+```
+
+The proxy refuses to start, exit code 2, when anything the manifest declares is outside
+the envelope: a tool not on `tools.allow`, a denied or protected tool, a host outside
+`egress`, or any host at all under an envelope with no `egress` block, because then its
+reach cannot be checked. An envelope with `components.require_manifest` refuses to start
+without one.
+
+Once running, a tool the server exposes that its manifest did not declare is hidden from
+`tools/list` and refused on `tools/call` with rule `components`, even if the envelope
+grants it. A server that grew a tool after it was admitted does not get to use it.
+
+Admission needs `intent-envelope` 0.3 or newer installed beside the proxy.
 
 ## Escalations that wait for a person
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 SPEC_VERSION = "0.1"
+SUPPORTED_VERSIONS = ("0.1", "0.2")
 _SCHEMA_FILE = f"intent-envelope-{SPEC_VERSION}.json"
 
 
@@ -22,13 +23,14 @@ class ValidationError(Exception):
         super().__init__("; ".join(problems))
 
 
-def load_schema() -> Dict[str, Any]:
-    """Return the bundled JSON Schema for the supported specification version."""
+def load_schema(version: str = SPEC_VERSION) -> Dict[str, Any]:
+    """Return the bundled JSON Schema for a supported specification version."""
+    name = f"intent-envelope-{version}.json"
     here = Path(__file__).resolve().parent
-    for candidate in (here / "schema" / _SCHEMA_FILE, here.parents[3] / "schema" / _SCHEMA_FILE):
+    for candidate in (here / "schema" / name, here.parents[3] / "schema" / name):
         if candidate.is_file():
             return json.loads(candidate.read_text(encoding="utf-8"))
-    raise FileNotFoundError(f"bundled schema {_SCHEMA_FILE} not found")
+    raise FileNotFoundError(f"bundled schema {name} not found")
 
 
 def _where(error: Any) -> str:
@@ -45,7 +47,12 @@ def validate(envelope: Dict[str, Any]) -> None:
     # laxness here: section 3 denies every call under an expired envelope, which means an
     # enforcement point has to parse the value. A string that passes validation and then
     # fails to parse turns a deliberate expiry into undefined behaviour at the gate.
-    validator = Draft202012Validator(load_schema(), format_checker=FormatChecker())
+    # The schema is chosen by the version the envelope declares. Anything else is checked
+    # against 0.1, which then reports the version as wrong: a version this package has
+    # never heard of is not accepted.
+    declared = envelope.get("intent_envelope") if isinstance(envelope, dict) else None
+    version = declared if declared in SUPPORTED_VERSIONS else SPEC_VERSION
+    validator = Draft202012Validator(load_schema(version), format_checker=FormatChecker())
     errors = sorted(validator.iter_errors(envelope), key=lambda e: list(e.absolute_path))
     if errors:
         raise ValidationError([f"{_where(e)}: {e.message}" for e in errors])

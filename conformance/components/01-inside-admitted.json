@@ -1,0 +1,22 @@
+{
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "name": "a component whose tools and egress are inside the envelope is admitted",
+  "manifest": {
+    "name": "orders-mcp",
+    "version": "1.4.0",
+    "tools": [
+      "orders_read",
+      "issue_refund"
+    ],
+    "egress": [
+      "api.payments.example.com"
+    ],
+    "data": [
+      "orders:read"
+    ]
+  },
+  "expect": {
+    "admitted": true,
+    "reasons": []
+  }
+}

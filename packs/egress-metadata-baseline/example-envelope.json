@@ -1,0 +1,63 @@
+{
+  "intent_envelope": "0.2",
+  "id": "support-research-agent",
+  "revision": 1,
+  "purpose": "Answer customer questions by reading the help centre and status page, and fetch nothing else.",
+  "principal": {
+    "agent_identity": "support-research-agent",
+    "on_behalf_of": "support.tier1"
+  },
+  "tools": {
+    "allow": [
+      {
+        "name": "fetch_url"
+      },
+      {
+        "name": "search_help_centre"
+      }
+    ],
+    "deny": [
+      "run_shell",
+      "http_request_raw"
+    ]
+  },
+  "egress": {
+    "allow": [
+      "help.example.com",
+      "status.example.com"
+    ],
+    "deny": [
+      "169.254.0.0/16",
+      "fd00:ec2::254",
+      "metadata.google.internal",
+      "metadata.goog",
+      "metadata.azure.com",
+      "168.63.129.16",
+      "100.100.100.200",
+      "127.0.0.0/8",
+      "localhost",
+      "0.0.0.0/8",
+      "10.0.0.0/8",
+      "172.16.0.0/12",
+      "192.168.0.0/16",
+      "100.64.0.0/10",
+      ".internal",
+      ".local",
+      ".svc.cluster.local",
+      "kubernetes.default.svc"
+    ]
+  },
+  "credentials": {
+    "bind": "run",
+    "max_lifetime_seconds": 900
+  },
+  "components": {
+    "require_manifest": true
+  },
+  "limits": {
+    "max_tool_calls": 30,
+    "max_spend_usd": 1.0
+  },
+  "on_no_response": "deny",
+  "expires": "2027-06-30T23:59:59Z"
+}

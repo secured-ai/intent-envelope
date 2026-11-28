@@ -1,0 +1,31 @@
+{
+  "name": "a tool that changes the envelope is denied to the agent it governs",
+  "spec_rule": 3,
+  "decided_by": "amendment",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "update_envelope",
+    "arguments": {
+      "add_tool": "customer_export"
+    },
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-3",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "amendment"
+  },
+  "note": "0.2 step 3. update_envelope is not on tools.allow either, and amendment is named because it is checked first: the reason an operator reads is that the agent tried to change its own envelope."
+}

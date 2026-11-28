@@ -1,0 +1,30 @@
+{
+  "name": "a subdomain of an allowed domain is permitted",
+  "spec_rule": 13,
+  "decided_by": "allow",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "fetch_url",
+    "egress": [
+      "status.example.com"
+    ],
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-3",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "allow",
+    "rule": "allow"
+  }
+}

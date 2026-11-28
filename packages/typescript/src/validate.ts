@@ -11,7 +11,7 @@
  * silently reporting envelopes valid against rules nobody enforced.
  */
 
-import { SCHEMA } from './schema.ts';
+import { SCHEMA, SCHEMA_02, SCHEMAS } from './schema.ts';
 
 export interface Problem {
   path: string;
@@ -64,6 +64,7 @@ export function assertKeywordsSupported(schema: unknown, path = '#'): void {
 }
 
 assertKeywordsSupported(SCHEMA);
+assertKeywordsSupported(SCHEMA_02);
 
 function typeOf(value: unknown): string {
   if (value === null) return 'null';
@@ -201,10 +202,21 @@ function check(schema: Schema, value: unknown, path: string, root: Schema, probl
   }
 }
 
+/**
+ * The schema an envelope is checked against, chosen by the version it declares.
+ * Anything that declares no known version is checked against 0.1, which then reports
+ * the version as wrong: a version this package has never heard of is not accepted.
+ */
+function schemaFor(envelope: unknown): Schema {
+  const v = envelope && typeof envelope === 'object' ? (envelope as Record<string, unknown>).intent_envelope : undefined;
+  return (SCHEMAS as Record<string, Schema>)[String(v)] ?? (SCHEMA as Schema);
+}
+
 /** Collect every problem with an envelope. An empty array means it is well formed. */
 export function problems(envelope: unknown): Problem[] {
   const found: Problem[] = [];
-  check(SCHEMA as Schema, envelope, '', SCHEMA as Schema, found);
+  const schema = schemaFor(envelope);
+  check(schema, envelope, '', schema, found);
   return found;
 }
 
@@ -214,4 +226,4 @@ export function validate(envelope: unknown): void {
   if (found.length) throw new ValidationError(found);
 }
 
-export { SCHEMA };
+export { SCHEMA, SCHEMA_02 };

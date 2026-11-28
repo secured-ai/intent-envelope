@@ -1,0 +1,34 @@
+{
+  "name": "data sent to a processor the envelope does not name is refused",
+  "spec_rule": 8,
+  "decided_by": "data.processors",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "summarise",
+    "data": [
+      "orders:read"
+    ],
+    "processors": [
+      "fireworks"
+    ],
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-3",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "data.processors"
+  },
+  "note": "Notion and Fireworks: transcripts at a fourth party nobody chose."
+}

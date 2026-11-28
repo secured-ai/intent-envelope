@@ -13,11 +13,11 @@ word "conformant" means the same thing in each.
 | Field | Meaning |
 | --- | --- |
 | `name` | What the case pins, in one line |
-| `spec_rule` | The step in [specification section 3](../../spec/v0.1.md) that decides it |
+| `spec_rule` | The step in section 3 that decides it: [0.1](../../spec/v0.1.md) for a 0.1 envelope, [0.2](../../spec/v0.2.md) for a 0.2 one, whose steps are renumbered |
 | `decided_by` | Stable identifier for that rule, which the decision record must carry |
 | `envelope` or `envelope_ref` | The envelope inline, or a path relative to this directory |
-| `call` | The proposed call: `tool`, `arguments`, `data`, `recipients`, optional `estimated_cost_usd` and `context` |
-| `state` | The run so far: `now`, `tool_calls_made`, `records_returned`, `spend_usd`, `runtime_seconds`, `recipients_contacted` |
+| `call` | The proposed call: `tool`, `arguments`, `data`, `recipients`, optional `estimated_cost_usd` and `context`; for 0.2, optional `egress`, `processors` and `credential` |
+| `state` | The run so far: `now`, `tool_calls_made`, `records_returned`, `spend_usd`, `runtime_seconds`, `recipients_contacted`; for 0.2, optional `run_id` and `task_id` |
 | `expect` | `result` is one of `allow`, `deny`, `escalate`; `rule` must match `decided_by` |
 
 A case passes when the implementation returns the expected result **and** names the same

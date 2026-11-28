@@ -1,0 +1,30 @@
+{
+  "name": "with bind task, a credential from another task in the same run is refused",
+  "spec_rule": 6,
+  "decided_by": "credentials",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "orders_read",
+    "data": [
+      "orders:read"
+    ],
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-2",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "credentials"
+  }
+}

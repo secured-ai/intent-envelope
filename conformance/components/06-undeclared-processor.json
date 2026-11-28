@@ -1,0 +1,19 @@
+{
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "name": "a component sending data to a processor the envelope does not name is refused",
+  "manifest": {
+    "name": "summarise-skill",
+    "tools": [
+      "summarise"
+    ],
+    "processors": [
+      "fireworks"
+    ]
+  },
+  "expect": {
+    "admitted": false,
+    "reasons": [
+      "it sends data to fireworks, which is not on data.processors"
+    ]
+  }
+}

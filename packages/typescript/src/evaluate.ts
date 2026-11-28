@@ -10,6 +10,13 @@
  * agree because they run the same files, rather than because someone read both.
  *
  * Nothing here consults the model, the prompt, or the agent's stated reason for the call.
+ *
+ * Version 0.2 adds four rules, each of which applies only when the envelope carries
+ * the block it reads, so every 0.1 envelope decides exactly as it did: amendment
+ * (tools that change envelopes are denied to the governed agent), credentials (a
+ * credential must be bound to this run and expire with the envelope), data.processors
+ * (which inference providers a prompt may reach) and egress (which hosts a tool may
+ * reach).
  */
 
 export type Result = 'allow' | 'deny' | 'escalate';
@@ -21,7 +28,15 @@ export interface Envelope {
   purpose: string;
   principal: { agent_identity: string; on_behalf_of?: string };
   tools: { allow: ToolGrant[]; deny?: string[] };
-  data?: { allow?: string[]; deny?: string[] };
+  data?: { allow?: string[]; deny?: string[]; processors?: string[] };
+  /** 0.2. Hosts a tool may reach. Deny wins. */
+  egress?: { allow?: string[]; deny?: string[] };
+  /** 0.2. What a credential the agent uses must be bound to, and how long it may live. */
+  credentials?: { bind: 'run' | 'task'; max_lifetime_seconds?: number };
+  /** 0.2. Who may change this envelope, and which tools change it. */
+  amendment?: { approvers?: Array<{ id: string; public_key: string }>; protected_tools?: string[] };
+  /** 0.2. Admission of MCP servers, skills and plugins. */
+  components?: { require_manifest?: boolean };
   recipients?: { allow?: string[]; max_per_run?: number };
   limits: Limits;
   escalate?: EscalateRule[];
@@ -61,6 +76,19 @@ export interface Call {
   recipients?: string[];
   estimated_cost_usd?: number;
   context?: Record<string, unknown>;
+  /** 0.2. Hosts the call would reach, as the enforcement point established them. */
+  egress?: string[];
+  /** 0.2. Inference providers or subprocessors the call would send data to. */
+  processors?: string[];
+  /** 0.2. The credential the call would use, as its issuer describes it. */
+  credential?: CredentialFacts;
+}
+
+export interface CredentialFacts {
+  run_id?: string;
+  task_id?: string;
+  issued_at?: string;
+  expires_at?: string;
 }
 
 /** What this run has already spent. Limits are arithmetic over this, not judgement. */
@@ -71,6 +99,9 @@ export interface RunState {
   spend_usd?: number;
   runtime_seconds?: number;
   recipients_contacted?: number;
+  /** 0.2. Which run, and which task within it, a credential must be bound to. */
+  run_id?: string;
+  task_id?: string;
 }
 
 export interface Decision {
@@ -207,6 +238,64 @@ function constraintViolation(grant: ToolGrant, args: Record<string, unknown>): s
   return null;
 }
 
+function ipv4(value: string): number | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value);
+  if (!m) return null;
+  const parts = m.slice(1).map(Number);
+  if (parts.some((p) => p > 255)) return null;
+  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
+}
+
+/**
+ * 0.2 host matching, the same in every implementation: an exact host or IP, a leading
+ * dot or "*." for any subdomain (never the bare domain itself), or an IPv4 CIDR range.
+ * Case-insensitive, and a trailing dot is ignored, because "Metadata.Google.Internal."
+ * is the same host.
+ */
+export function hostMatches(host: string, pattern: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, '');
+  const p = pattern.toLowerCase().replace(/\.$/, '');
+  const cidr = /^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/.exec(p);
+  if (cidr) {
+    const base = ipv4(cidr[1]);
+    const addr = ipv4(h);
+    const bits = Number(cidr[2]);
+    if (base === null || addr === null || bits > 32) return false;
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    return ((addr & mask) >>> 0) === ((base & mask) >>> 0);
+  }
+  if (p.startsWith('*.')) return h.endsWith(p.slice(1));
+  if (p.startsWith('.')) return h.endsWith(p);
+  return h === p;
+}
+
+/** Why a credential does not satisfy the envelope's credentials block, or null. */
+function credentialViolation(envelope: Envelope, call: Call, run: Required<RunState>): string | null {
+  const rule = envelope.credentials;
+  if (!rule) return null;
+  const c = call.credential;
+  if (!c) return 'the call carries no credential facts, so what it is bound to cannot be established';
+  if (!c.run_id || !run.run_id || c.run_id !== run.run_id) {
+    return `the credential is bound to ${c.run_id ? `run ${c.run_id}` : 'no run'}, not this run${run.run_id ? ` (${run.run_id})` : ''}`;
+  }
+  if (rule.bind === 'task' && (!c.task_id || !run.task_id || c.task_id !== run.task_id)) {
+    return `the credential is bound to ${c.task_id ? `task ${c.task_id}` : 'no task'}, not this task${run.task_id ? ` (${run.task_id})` : ''}`;
+  }
+  const expires = parseInstant(c.expires_at);
+  if (expires === null) return 'the credential states no expiry, so it could outlive the envelope';
+  const ends = parseInstant(envelope.expires);
+  if (ends !== null && expires > ends) return `the credential expires at ${c.expires_at}, after the envelope does`;
+  if (rule.max_lifetime_seconds !== undefined) {
+    const issued = parseInstant(c.issued_at);
+    if (issued === null) return 'the credential states no issue time, so its lifetime cannot be checked';
+    const lifetime = Math.round((expires - issued) / 1000);
+    if (lifetime > rule.max_lifetime_seconds) {
+      return `the credential lives ${lifetime}s, longer than the permitted ${rule.max_lifetime_seconds}s`;
+    }
+  }
+  return null;
+}
+
 function limitExceeded(limits: Limits, call: Call, state: Required<RunState>): string | null {
   const cost = call.estimated_cost_usd ?? 0;
   if (limits.max_tool_calls !== undefined && state.tool_calls_made + 1 > limits.max_tool_calls) {
@@ -246,6 +335,8 @@ export function evaluate(
     spend_usd: state.spend_usd ?? 0,
     runtime_seconds: state.runtime_seconds ?? 0,
     recipients_contacted: state.recipients_contacted ?? 0,
+    run_id: state.run_id ?? '',
+    task_id: state.task_id ?? '',
   };
   const decidedAt = run.now || new Date().toISOString();
 
@@ -300,6 +391,13 @@ export function evaluate(
     return verdict('deny', 'tools.deny', `${call.tool} is on tools.deny, which no later grant overrides`);
   }
 
+  // 0.2: a tool that changes envelopes, policies or controls is denied to the agent
+  //    the envelope governs, whatever tools.allow says. Spec section 2.1 requirement 1:
+  //    an agent that can widen its own envelope is asking permission from itself.
+  if ((envelope.amendment?.protected_tools ?? []).includes(call.tool)) {
+    return verdict('deny', 'amendment', `${call.tool} changes envelopes or controls, which the agent they govern may never do`);
+  }
+
   // 3. Silence is not permission.
   const grant = grantFor(envelope, call.tool);
   if (!grant) return verdict('deny', 'tools.allow', `${call.tool} is not on tools.allow`);
@@ -307,6 +405,10 @@ export function evaluate(
   // 4. The tool is granted. The arguments still have to be the ones that were granted.
   const violation = constraintViolation(grant, call.arguments ?? {});
   if (violation) return verdict('deny', 'tools.constraints', violation);
+
+  // 0.2: a credential bound to this run, that dies with the envelope.
+  const badCredential = credentialViolation(envelope, call, run);
+  if (badCredential) return verdict('deny', 'credentials', badCredential);
 
   // 5. Data. An absent data block is unconstrained here, unlike recipients, because
   //    0.1 states the default for recipients and not for this one.
@@ -320,6 +422,26 @@ export function evaluate(
       const allowed = envelope.data.allow;
       if (allowed !== undefined && !allowed.some((p) => dataMatcher(target, p))) {
         return verdict('deny', 'data', `${target} is not within data.allow`);
+      }
+    }
+  }
+
+  // 0.2: where the data goes to be processed. Present and empty means nowhere.
+  const processors = envelope.data?.processors;
+  if (processors !== undefined) {
+    for (const p of call.processors ?? []) {
+      if (!processors.includes(p)) return verdict('deny', 'data.processors', `${p} is not on data.processors`);
+    }
+  }
+
+  // 0.2: which hosts the call reaches. Deny wins, as everywhere else.
+  if (envelope.egress) {
+    for (const host of call.egress ?? []) {
+      const denied = (envelope.egress.deny ?? []).find((p) => hostMatches(host, p));
+      if (denied) return verdict('deny', 'egress', `${host} matches egress.deny entry ${denied}`);
+      const allowed = envelope.egress.allow;
+      if (allowed !== undefined && !allowed.some((p) => hostMatches(host, p))) {
+        return verdict('deny', 'egress', `${host} is not on egress.allow`);
       }
     }
   }

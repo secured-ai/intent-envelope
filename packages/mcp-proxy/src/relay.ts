@@ -31,6 +31,7 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EnforcementPoint, type Decision, type Envelope } from 'intent-envelope';
+import type { ComponentManifest } from './config.ts';
 
 import type { Ledger } from './ledger.ts';
 
@@ -88,6 +89,12 @@ export interface RelayOptions {
   filterToolList?: boolean;
   /** Hold escalated calls until this answers. Absent: escalations are refused. */
   escalations?: EscalationHandler;
+  /**
+   * 0.2. The admitted manifest. A tool the server exposes but the manifest never
+   * declared is hidden from tools/list and refused on tools/call: a component that grew
+   * a tool after admission does not get to use it.
+   */
+  component?: ComponentManifest;
 }
 
 /**
@@ -129,6 +136,21 @@ function allowedNames(envelope: Envelope): Set<string> {
   return new Set((envelope.tools?.allow ?? []).map((grant) => grant.name));
 }
 
+/** A refusal for a tool the admitted component never declared. */
+function undeclared(envelope: Envelope, tool: string, args: Record<string, unknown>, component: string): Decision {
+  const decidedAt = new Date().toISOString();
+  const detail = `${tool} is not declared in the manifest of ${component}, which is what was admitted`;
+  const principal = envelope.principal ?? ({} as Envelope['principal']);
+  return {
+    result: 'deny', rule: 'components', detail, envelope, call: { tool, arguments: args }, decidedAt,
+    record: () => ({
+      envelope_id: envelope.id, revision: envelope.revision, agent_identity: principal.agent_identity,
+      principal: principal.on_behalf_of, tool, target: null, result: 'deny', rule: 'components', detail,
+      cost_usd: 0, escalated_to: null, decided_at: decidedAt,
+    }),
+  };
+}
+
 /** The ledger entry for how an escalation ended, beside the entry that raised it. */
 function settled(decision: Decision, result: 'allow' | 'deny', answer: EscalationAnswer): Decision {
   return {
@@ -158,6 +180,7 @@ export class Relay {
   private readonly point: EnforcementPoint;
   private readonly options: RelayOptions;
   private readonly allowed: Set<string>;
+  private readonly declared: Set<string> | null;
   /** ids of tools/list requests in flight, so their replies can be filtered. */
   private readonly listRequests = new Set<string>();
   private closed = false;
@@ -167,6 +190,8 @@ export class Relay {
   constructor(options: RelayOptions) {
     this.options = options;
     this.allowed = allowedNames(options.envelope);
+    this.declared = options.component ? new Set(options.component.tools) : null;
+    if (options.component) this.log(`component ${options.component.name} admitted with ${options.component.tools.length} declared tools`);
     this.point = new EnforcementPoint(options.envelope, {
       onDecision: (decision) => options.ledger.record(decision),
     });
@@ -232,6 +257,17 @@ export class Relay {
 
     const tool = typeof message.params?.name === 'string' ? message.params.name : '';
     const args = (message.params?.arguments ?? {}) as Record<string, unknown>;
+
+    // 0.2: a tool the admitted manifest never declared is refused before the envelope
+    // is consulted. The envelope may well grant it; this server was not admitted to
+    // provide it.
+    if (this.declared && !this.declared.has(tool)) {
+      const refused = undeclared(this.options.envelope, tool, args, this.options.component!.name);
+      this.options.ledger.record(refused);
+      if (message.id === undefined || message.id === null) return true;
+      this.refuse(message.id, refused);
+      return true;
+    }
 
     // No argument an agent passes can widen the envelope. The envelope was read from
     // disk before this process accepted a single message and is never re-read.
@@ -327,7 +363,14 @@ export class Relay {
     const tools = message.result?.tools;
     if (!Array.isArray(tools)) return line;
 
-    const kept = tools.filter((tool) => typeof tool?.name === 'string' && this.allowed.has(tool.name));
+    const kept = tools.filter((tool) => typeof tool?.name === 'string' && this.allowed.has(tool.name)
+      && (!this.declared || this.declared.has(tool.name)));
+    const undeclaredTools = this.declared
+      ? tools.filter((t) => typeof t?.name === 'string' && !this.declared!.has(t.name)).map((t) => t.name)
+      : [];
+    if (undeclaredTools.length) {
+      this.log(`warning: the server exposes tools its manifest does not declare, hidden and refused: ${undeclaredTools.join(', ')}`);
+    }
     if (kept.length !== tools.length) {
       this.log(`tools/list: offering ${kept.length} of ${tools.length} tools the server exposes`);
     }

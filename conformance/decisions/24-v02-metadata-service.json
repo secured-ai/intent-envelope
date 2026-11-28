@@ -1,0 +1,34 @@
+{
+  "name": "the instance metadata service is refused by egress.deny",
+  "spec_rule": 9,
+  "decided_by": "egress",
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "call": {
+    "tool": "fetch_url",
+    "arguments": {
+      "url": "http://169.254.169.254/latest/meta-data/"
+    },
+    "egress": [
+      "169.254.169.254"
+    ],
+    "credential": {
+      "run_id": "run-7",
+      "task_id": "task-3",
+      "issued_at": "2026-11-28T11:55:00Z",
+      "expires_at": "2026-11-28T12:05:00Z"
+    }
+  },
+  "state": {
+    "now": "2026-11-28T12:00:00Z",
+    "tool_calls_made": 0,
+    "spend_usd": 0.0,
+    "recipients_contacted": 0,
+    "run_id": "run-7",
+    "task_id": "task-3"
+  },
+  "expect": {
+    "result": "deny",
+    "rule": "egress"
+  },
+  "note": "Bedrock AgentCore: a fetch tool pointed at the metadata service."
+}
