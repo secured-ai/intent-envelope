@@ -7,6 +7,7 @@
 
 export { ConfigError, USAGE, parse, type Config } from './config.ts';
 export { fileLedger, memoryLedger, type Ledger } from './ledger.ts';
-export { DENIED, ESCALATION_REQUIRED, Relay, type RelayOptions } from './relay.ts';
+export { DENIED, ESCALATION_REQUIRED, Relay, type RelayOptions, type EscalationHandler, type EscalationAnswer } from './relay.ts';
+export { supervisorEscalations, type SupervisorSettings } from './supervisor.ts';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';

@@ -18,6 +18,13 @@ export interface Config {
   args: string[];
   ledgerPath?: string;
   filterToolList: boolean;
+  /** Where escalations go to wait for a person. Absent: they are refused. */
+  supervisor?: {
+    url: string;
+    callerId: string;
+    privateKeyPem: string;
+    supervisorPublicKeyPem: string;
+  };
 }
 
 export class ConfigError extends Error {
@@ -36,6 +43,13 @@ Options
   --ledger <path>      append decisions here as JSON lines (or INTENT_ENVELOPE_LEDGER)
   --no-filter-tools    advertise every upstream tool, refusing the ones not granted
   --help
+
+Escalations wait for a person when a Supervisor Check service is given (all four):
+  --supervisor <url>          the supervisor (or INTENT_ENVELOPE_SUPERVISOR)
+  --supervisor-caller <id>    this host's caller id there (or INTENT_ENVELOPE_SUPERVISOR_CALLER)
+  --supervisor-key <path>     this host's Ed25519 private key (or INTENT_ENVELOPE_SUPERVISOR_KEY)
+  --supervisor-pub <path>     the supervisor's public key, pinned (or INTENT_ENVELOPE_SUPERVISOR_PUB)
+Without them, an escalated call is refused with the name of who must approve it.
 
 Everything after -- is the server to govern, run as a child process.
 
@@ -59,12 +73,20 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
   let envelopePath = env.INTENT_ENVELOPE;
   let ledgerPath = env.INTENT_ENVELOPE_LEDGER;
   let filterToolList = true;
+  let supUrl = env.INTENT_ENVELOPE_SUPERVISOR;
+  let supCaller = env.INTENT_ENVELOPE_SUPERVISOR_CALLER;
+  let supKey = env.INTENT_ENVELOPE_SUPERVISOR_KEY;
+  let supPub = env.INTENT_ENVELOPE_SUPERVISOR_PUB;
 
   for (let i = 0; i < flags.length; i += 1) {
     const flag = flags[i];
     if (flag === '--envelope') envelopePath = flags[++i];
     else if (flag === '--ledger') ledgerPath = flags[++i];
     else if (flag === '--no-filter-tools') filterToolList = false;
+    else if (flag === '--supervisor') supUrl = flags[++i];
+    else if (flag === '--supervisor-caller') supCaller = flags[++i];
+    else if (flag === '--supervisor-key') supKey = flags[++i];
+    else if (flag === '--supervisor-pub') supPub = flags[++i];
     else if (flag === '--help' || flag === '-h') throw new ConfigError(USAGE);
     else throw new ConfigError(`unknown option ${flag}\n\n${USAGE}`);
   }
@@ -85,5 +107,40 @@ export function parse(argv: string[], env: Record<string, string | undefined> = 
   // is worse than one that does not start, because the client will assume it is running.
   validate(envelope);
 
-  return { envelope, envelopePath: path, command: rest[0], args: rest.slice(1), ledgerPath, filterToolList };
+  // All or none. Half a supervisor configuration would read as "escalations wait" to the
+  // operator and behave as "escalations are refused", or worse, fail on the first one.
+  const given = [supUrl, supCaller, supKey, supPub].filter(Boolean).length;
+  let supervisor: Config['supervisor'];
+  if (given > 0 && given < 4) {
+    throw new ConfigError('--supervisor, --supervisor-caller, --supervisor-key and --supervisor-pub go together: give all four or none');
+  }
+  if (given === 4) {
+    const read = (what: string, file: string) => {
+      try {
+        return readFileSync(resolve(file), 'utf8');
+      } catch (error) {
+        throw new ConfigError(`cannot read the ${what} at ${file}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+    let url: URL;
+    try {
+      url = new URL(supUrl!);
+    } catch {
+      throw new ConfigError(`--supervisor is not a URL: ${supUrl}`);
+    }
+    if (url.protocol !== 'https:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+      throw new ConfigError('--supervisor must be https unless it is on this host');
+    }
+    supervisor = {
+      url: url.toString(),
+      callerId: supCaller!,
+      privateKeyPem: read('supervisor caller key', supKey!),
+      supervisorPublicKeyPem: read('supervisor public key', supPub!),
+    };
+  }
+
+  return {
+    envelope, envelopePath: path, command: rest[0], args: rest.slice(1), ledgerPath, filterToolList,
+    ...(supervisor ? { supervisor } : {}),
+  };
 }

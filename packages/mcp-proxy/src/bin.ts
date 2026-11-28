@@ -11,11 +11,12 @@ import { spawn } from 'node:child_process';
 
 import { ConfigError, parse } from './config.ts';
 import { fileLedger, memoryLedger } from './ledger.ts';
-import { Relay } from './relay.ts';
+import { Relay, type EscalationHandler } from './relay.ts';
+import { supervisorEscalations } from './supervisor.ts';
 
 const log = (message: string) => process.stderr.write(`[intent-envelope] ${message}\n`);
 
-function main(): void {
+async function main(): Promise<void> {
   let config;
   try {
     config = parse(process.argv.slice(2), process.env);
@@ -27,6 +28,16 @@ function main(): void {
     // A schema failure arrives here. It names the field, which is the useful part.
     process.stderr.write(`[intent-envelope] the envelope is not valid: ${(error as Error).message}\n`);
     process.exit(2);
+  }
+
+  let escalations: EscalationHandler | undefined;
+  if (config.supervisor) {
+    try {
+      escalations = await supervisorEscalations(config.supervisor);
+    } catch (error) {
+      process.stderr.write(`[intent-envelope] ${(error as Error).message}\n`);
+      process.exit(2);
+    }
   }
 
   const { envelope, command, args } = config;
@@ -48,6 +59,7 @@ function main(): void {
     output: process.stdout,
     log,
     filterToolList: config.filterToolList,
+    ...(escalations ? { escalations } : {}),
   });
   relay.start();
 
@@ -59,4 +71,4 @@ function main(): void {
   });
 }
 
-main();
+void main();
