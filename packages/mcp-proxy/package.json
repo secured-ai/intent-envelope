@@ -1,6 +1,6 @@
 {
   "name": "intent-envelope-mcp",
-  "version": "0.3.0",
+  "version": "0.2.0",
   "description": "Enforce an intent envelope on an MCP server: refuse a tool call before it reaches the server.",
   "license": "Apache-2.0",
   "type": "module",
