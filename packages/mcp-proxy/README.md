@@ -28,7 +28,7 @@ notification that changes what is permitted.
 npm install -g intent-envelope-mcp
 ```
 
-Requires Node 22.18 or newer. The only dependency is
+Requires Node 22.18 or newer. The only required dependency is
 [`intent-envelope`](../typescript) itself.
 
 ## Use
@@ -60,6 +60,7 @@ had:
 | `--envelope <path>` | the envelope to enforce, or `INTENT_ENVELOPE` |
 | `--ledger <path>` | append decisions as JSON lines, or `INTENT_ENVELOPE_LEDGER` |
 | `--no-filter-tools` | advertise every upstream tool, refusing the ones not granted |
+| `--supervisor <url>` and three more | hold escalations for a person, see [below](#escalations-that-wait-for-a-person) |
 
 An envelope that fails validation stops the process with exit code 2 before it accepts a
 message. An enforcement point that starts with an envelope it cannot understand is worse
@@ -100,7 +101,41 @@ Two codes, because collapsing them would turn "a named person must decide this" 
 | `-32000` | refused by the envelope |
 | `-32001` | a named human must approve this call |
 
-## The ledger
+## Escalations that wait for a person
+
+Give the proxy a [Supervisor Check](https://github.com/secured-ai/supervisor-check) 0.3
+service and an escalated call is held, neither forwarded nor answered, until the person the
+envelope names answers it:
+
+```sh
+npm install -g intent-envelope-mcp supervisor-check
+
+intent-envelope-mcp --envelope ./ap-agent.json \
+  --supervisor https://supervisor.internal:8443 \
+  --supervisor-caller ap-host \
+  --supervisor-key /etc/ap-host/ed25519.pem \
+  --supervisor-pub /etc/ap-host/supervisor.pub \
+  -- npx -y @acme/invoice-mcp
+```
+
+All four go together, and the URL must be https unless it is on this host. The
+supervisor derives the facts of the call from your systems of record, opens an approval,
+and notifies. The approver answers with `supervisor-approve`, signed with their own key.
+
+The held call is forwarded, byte for byte as the client sent it, only on a record signed
+by the pinned supervisor key, for that exact request, that says allow. Everything else
+denies with code `-32000` and the reason: a refusal, nobody answering in time, the
+supervisor being unreachable, or an answer that does not verify. A
+`notifications/cancelled` for the held call withdraws the approval, and the call is never
+forwarded or answered. Other calls keep flowing while one waits.
+
+The ledger gets two entries: the escalation, and how it ended, with who answered.
+
+Most MCP clients time out a tool call after a minute or so. Set the client's timeout above
+the envelope's `timeout_seconds`, or the client gives up first, which withdraws the
+approval.
+
+
 
 With `--ledger`, every decision is appended as one JSON object per line, flushed as it is
 made. Refusals are recorded, not only successes: a log holding what succeeded cannot
@@ -132,12 +167,10 @@ enforce it, so the mismatch escalates regardless.
 
 Worth being explicit, because a guardrail people misunderstand is worse than none.
 
-- **It does not wait for a human.** An escalation is recorded as an escalation and the
-  call is refused with the name of who must approve it. There is no approval channel yet,
-  so `on_no_response: allow` is **not** honoured: escalated calls are refused rather than
-  allowed, and the process says so on startup if your envelope sets it. Being stricter
-  than the envelope asked is the safe direction, but it is a difference and you should
-  know about it.
+- **It waits for a human only through a supervisor.** On its own, an escalation is
+  recorded and refused with the name of who must approve it, and `on_no_response: allow`
+  is not honoured. With `--supervisor`, the call is held until the person answers, as
+  described under [Escalations that wait for a person](#escalations-that-wait-for-a-person).
 - **Tool filtering is not the gate.** `tools/list` is filtered to what the envelope
   grants, which reduces what the model is tempted by, but a client can call any name it
   likes. The guarantee comes from intercepting `tools/call`, which happens whether or not

@@ -34,6 +34,35 @@ import { EnforcementPoint, type Decision, type Envelope } from 'intent-envelope'
 
 import type { Ledger } from './ledger.ts';
 
+/**
+ * Where an escalated call goes to wait for a person.
+ *
+ * Without one, an escalation is refused with the name of who must approve it, which is
+ * what this proxy has always done. With one, the call is held, neither forwarded nor
+ * answered, until the handler resolves. The handler must resolve to deny on every
+ * failure: a handler that throws is treated as a deny here as well.
+ */
+export interface EscalationHandler {
+  resolve(
+    call: { tool: string; arguments: Record<string, unknown> },
+    decision: Decision,
+    signal: AbortSignal,
+  ): Promise<EscalationAnswer>;
+  /** Shown on startup, so the operator can see where escalations go. */
+  describe?(): string;
+}
+
+export interface EscalationAnswer {
+  outcome: 'allow' | 'deny';
+  /** Why, in words. Goes into the ledger and, on a deny, the error the client sees. */
+  reason: string;
+  /** True only when the answer came from something this process verified, such as a signed record. */
+  verified: boolean;
+  /** Who answered, when a person did. */
+  decided_by?: string;
+  approval_id?: string;
+}
+
 /** Implementation-defined JSON-RPC server error codes, per the JSON-RPC 2.0 spec. */
 export const DENIED = -32000;
 export const ESCALATION_REQUIRED = -32001;
@@ -57,6 +86,8 @@ export interface RelayOptions {
   log?: (message: string) => void;
   /** Hide tools the envelope does not allow from tools/list. Defence in depth only. */
   filterToolList?: boolean;
+  /** Hold escalated calls until this answers. Absent: escalations are refused. */
+  escalations?: EscalationHandler;
 }
 
 /**
@@ -98,6 +129,31 @@ function allowedNames(envelope: Envelope): Set<string> {
   return new Set((envelope.tools?.allow ?? []).map((grant) => grant.name));
 }
 
+/** The ledger entry for how an escalation ended, beside the entry that raised it. */
+function settled(decision: Decision, result: 'allow' | 'deny', answer: EscalationAnswer): Decision {
+  return {
+    ...decision,
+    result,
+    rule: 'escalate',
+    detail: answer.reason,
+    decidedAt: new Date().toISOString(),
+    record() {
+      return {
+        ...decision.record(),
+        result,
+        rule: 'escalate',
+        detail: answer.reason,
+        decided_at: this.decidedAt,
+        approval: {
+          verified: answer.verified,
+          ...(answer.approval_id ? { id: answer.approval_id } : {}),
+          ...(answer.decided_by ? { decided_by: answer.decided_by } : {}),
+        },
+      } as ReturnType<Decision['record']>;
+    },
+  };
+}
+
 export class Relay {
   private readonly point: EnforcementPoint;
   private readonly options: RelayOptions;
@@ -105,6 +161,8 @@ export class Relay {
   /** ids of tools/list requests in flight, so their replies can be filtered. */
   private readonly listRequests = new Set<string>();
   private closed = false;
+  /** Escalated calls being held, by request id, so a cancellation can withdraw them. */
+  private readonly held = new Map<string, AbortController>();
 
   constructor(options: RelayOptions) {
     this.options = options;
@@ -117,10 +175,12 @@ export class Relay {
     // human does not answer in time. This process does not wait for a human at all, so
     // honouring that would let a call through that nobody ever saw. It refuses instead,
     // and says so, rather than being quietly stricter than the envelope asked.
-    if (options.envelope.on_no_response === 'allow') {
+    if (options.escalations) {
+      this.log(`escalations wait for an answer from ${options.escalations.describe?.() ?? 'the configured approval channel'}`);
+    } else if (options.envelope.on_no_response === 'allow') {
       this.log(
-        'warning: this envelope sets on_no_response: allow, but this proxy does not ' +
-          'wait for a human, so escalated calls are refused rather than allowed.',
+        'warning: this envelope sets on_no_response: allow, but no approval channel is ' +
+          'configured, so escalated calls are refused rather than allowed.',
       );
     }
   }
@@ -157,6 +217,12 @@ export class Relay {
 
   /** Returns true when the line was handled here and must not reach the upstream. */
   private interceptFromClient(line: string, message: Rpc): boolean {
+    if (message.method === 'notifications/cancelled') {
+      // Relayed as well: the upstream may have its own requests in flight under that id.
+      this.cancelled(message);
+      return false;
+    }
+
     if (message.method === 'tools/list' && message.id !== undefined && message.id !== null) {
       this.listRequests.add(String(message.id));
       return false;
@@ -173,6 +239,16 @@ export class Relay {
 
     if (decision.result === 'allow') return false;
 
+    if (
+      decision.result === 'escalate' &&
+      this.options.escalations &&
+      message.id !== undefined &&
+      message.id !== null
+    ) {
+      this.hold(line, message.id, tool, args, decision);
+      return true;
+    }
+
     if (message.id === undefined || message.id === null) {
       // A tools/call without an id is not answerable. It is still recorded, and it is
       // still not forwarded, which is the part that matters.
@@ -182,6 +258,63 @@ export class Relay {
 
     this.refuse(message.id, decision);
     return true;
+  }
+
+  /**
+   * Keep an escalated call off the upstream's stdin until someone answers it.
+   *
+   * The original line is what gets forwarded on an allow, byte for byte, so what the
+   * approver saw and what the server runs are the same call. Other messages keep flowing
+   * while it waits: one held call does not stall the session.
+   */
+  private hold(line: string, id: string | number, tool: string, args: Record<string, unknown>, decision: Decision): void {
+    const key = String(id);
+    const controller = new AbortController();
+    this.held.set(key, controller);
+
+    const settle = (answer: EscalationAnswer) => {
+      this.held.delete(key);
+      const approved = answer.outcome === 'allow' && answer.verified;
+      this.options.ledger.record(settled(decision, approved ? 'allow' : 'deny', answer));
+      // The client cancelled. MCP says not to answer a cancelled request, and the call
+      // is not forwarded either way.
+      if (controller.signal.aborted) return;
+      if (approved) {
+        // The run budget is spent by a call that is going to happen, as for any allow.
+        const state = this.point.state;
+        state.tool_calls_made += 1;
+        state.spend_usd += decision.call.estimated_cost_usd ?? 0;
+        state.recipients_contacted += decision.call.recipients?.length ?? 0;
+        this.toUpstream(line);
+        return;
+      }
+      this.send({
+        jsonrpc: '2.0',
+        id,
+        error: {
+          code: DENIED,
+          message: `intent envelope: escalated to ${decision.escalateTo}, and not approved: ${answer.reason}`,
+          data: { intent_envelope: settled(decision, 'deny', answer).record() },
+        },
+      });
+    };
+
+    Promise.resolve()
+      .then(() => this.options.escalations!.resolve({ tool, arguments: args }, decision, controller.signal))
+      .then(settle, (error: unknown) =>
+        settle({
+          outcome: 'deny',
+          verified: false,
+          reason: `the approval channel failed: ${error instanceof Error ? error.message : String(error)}`,
+        }),
+      );
+  }
+
+  /** A notifications/cancelled for a held call withdraws it. */
+  private cancelled(message: Rpc): void {
+    const requestId = (message.params as { requestId?: unknown } | undefined)?.requestId;
+    if (requestId === undefined || requestId === null) return;
+    this.held.get(String(requestId))?.abort();
   }
 
   /** Filter a tools/list reply down to what the envelope grants. */
@@ -212,7 +345,9 @@ export class Relay {
         if (!message || !this.interceptFromClient(line, message)) this.toUpstream(line);
       },
       () => {
-        // Closing the upstream's stdin is the portable graceful shutdown signal.
+        // Closing the upstream's stdin is the portable graceful shutdown signal. Anything
+        // still waiting for approval is withdrawn: nobody is left to answer.
+        for (const controller of this.held.values()) controller.abort();
         this.closed = true;
         upstream.stdin.end();
       },

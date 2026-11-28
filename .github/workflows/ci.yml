@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   conformance:
-    runs-on: ubuntu-latest
+    # Pinned: the package supports Python 3.9 (requires-python >= 3.9), and the
+    # ubuntu-latest image moved to 26.04, which setup-python has no 3.9 build for.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:

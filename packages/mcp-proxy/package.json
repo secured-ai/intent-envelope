@@ -53,5 +53,13 @@
   "devDependencies": {
     "@types/node": "^22.19.1",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "supervisor-check": ">=0.3.0 <1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "supervisor-check": {
+      "optional": true
+    }
   }
 }
