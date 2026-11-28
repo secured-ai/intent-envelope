@@ -83,4 +83,55 @@ console.log(
   `\n${files.length} cases, ${agreeing} agreeing on result and rule` +
     (wordingDiff ? `, ${wordingDiff} differing only in wording` : ', wording identical'),
 );
-process.exit(verdictMismatch ? 1 : 0);
+
+// 0.2: amendments and component admission. These must agree exactly, reasons and
+// widening lines included, because a reviewer signs what the widening list says.
+const { checkAmendment, admitComponent } = await import(join(ROOT, 'packages/typescript/src/index.ts'));
+const folder = (name) => {
+  const dir = join(ROOT, 'conformance', name);
+  return readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((f) => {
+    const b = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    for (const k of ['current_ref', 'envelope_ref']) if (b[k]) b[k.replace('_ref', '')] = JSON.parse(readFileSync(resolve(dir, b[k]), 'utf8'));
+    return [f, b];
+  });
+};
+const tsMore = {};
+for (const [f, b] of folder('amendments')) {
+  const r = checkAmendment(b.current, b.proposed, b.signature, () => 'x');
+  tsMore[`amendments/${f}`] = { ok: r.accepted, reasons: r.reasons, widening: r.widening, digest: r.record().proposal_digest };
+}
+for (const [f, b] of folder('components')) {
+  const r = admitComponent(b.envelope, b.manifest);
+  tsMore[`components/${f}`] = { ok: r.admitted, reasons: r.reasons };
+}
+const PY2 = `
+import json, pathlib, sys
+sys.path.insert(0, ${JSON.stringify(join(ROOT, 'packages/python/src'))})
+from intent_envelope.amend import check_amendment, admit_component
+root = pathlib.Path(${JSON.stringify(join(ROOT, 'conformance'))})
+def load(d, f):
+    b = json.loads(f.read_text())
+    for k in ('current_ref', 'envelope_ref'):
+        if k in b: b[k.replace('_ref', '')] = json.loads((d / b[k]).resolve().read_text())
+    return b
+out = {}
+d = root / 'amendments'
+for f in sorted(d.glob('*.json')):
+    b = load(d, f); r = check_amendment(b['current'], b['proposed'], b['signature'], lambda: 'x')
+    out['amendments/' + f.name] = {'ok': r.accepted, 'reasons': r.reasons, 'widening': r.widening, 'digest': r.record()['proposal_digest']}
+d = root / 'components'
+for f in sorted(d.glob('*.json')):
+    b = load(d, f); r = admit_component(b['envelope'], b['manifest'])
+    out['components/' + f.name] = {'ok': r.admitted, 'reasons': r.reasons}
+print(json.dumps(out))
+`;
+const pyMore = JSON.parse(execFileSync('python3', ['-c', PY2], { encoding: 'utf8' }));
+let moreMismatch = 0;
+for (const [k, ts] of Object.entries(tsMore)) {
+  if (JSON.stringify(ts) !== JSON.stringify(pyMore[k])) {
+    moreMismatch += 1;
+    console.log(`DISAGREE  ${k}\n  typescript: ${JSON.stringify(ts)}\n  python:     ${JSON.stringify(pyMore[k])}`);
+  }
+}
+console.log(`${Object.keys(tsMore).length} amendment and component cases, ${Object.keys(tsMore).length - moreMismatch} identical in both, reasons, widening and digest included`);
+process.exit(verdictMismatch || moreMismatch ? 1 : 0);

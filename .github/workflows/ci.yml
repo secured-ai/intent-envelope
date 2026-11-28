@@ -27,9 +27,9 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./packages/python pytest
+          python -m pip install "./packages/python[signing]" pytest
       - name: Schema parses
-        run: python -c "import json,pathlib;json.loads(pathlib.Path('schema/intent-envelope-0.1.json').read_text());print('schema ok')"
+        run: python -c "import json,pathlib;[json.loads(pathlib.Path(f'schema/intent-envelope-{v}.json').read_text()) for v in ('0.1','0.2')];print('schemas ok')"
       - name: Conformance fixtures
         run: python -m pytest packages/python/tests -q
       - name: CLI accepts every example
@@ -89,6 +89,13 @@ jobs:
           node-version: "22.18"
       - name: Install
         run: npm ci
+      # The proxy is tested against the core package in this commit, not the last one
+      # published, so a change to both lands and is tested together. The packaged
+      # install check below still installs the core from the registry.
+      - name: Use the core package from this commit
+        run: |
+          (cd ../typescript && npm ci && npm run build)
+          npm install --no-save ../typescript
       - name: Types
         run: npm run typecheck
       - name: Enforcement over the wire protocol
@@ -119,7 +126,7 @@ jobs:
       - name: Install the Python package
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./packages/python
+          python -m pip install "./packages/python[signing]"
       - name: Both implementations decide every case the same way
         run: node tools/cross-check.mjs
 
@@ -129,9 +136,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The packaged schema must match the canonical one
         run: |
-          diff -u schema/intent-envelope-0.1.json \
-                  packages/python/src/intent_envelope/schema/intent-envelope-0.1.json \
-            || { echo "The copy under packages/python has drifted from schema/. Copy it across."; exit 1; }
+          for v in 0.1 0.2; do
+            diff -u schema/intent-envelope-$v.json \
+                    packages/python/src/intent_envelope/schema/intent-envelope-$v.json \
+              || { echo "The $v copy under packages/python has drifted from schema/. Copy it across."; exit 1; }
+          done
           echo "schema copy matches"
 
   # The two packages are one release at one version. Checked on every pull request

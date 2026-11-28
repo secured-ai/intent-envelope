@@ -1,0 +1,118 @@
+{
+  "current_ref": "../valid/refund-desk-0.2.json",
+  "name": "a widening signed by a named approver is accepted, and every widening is listed",
+  "proposed": {
+    "intent_envelope": "0.2",
+    "id": "refund-desk",
+    "revision": 5,
+    "purpose": "Issue refunds of up to 500 dollars on orders the customer can see, and tell the customer by email.",
+    "principal": {
+      "agent_identity": "refund-desk-agent",
+      "on_behalf_of": "support.refunds_team"
+    },
+    "tools": {
+      "allow": [
+        {
+          "name": "orders_read"
+        },
+        {
+          "name": "issue_refund",
+          "constraints": {
+            "max_amount_usd": 500
+          }
+        },
+        {
+          "name": "send_email",
+          "constraints": {
+            "template": "refund_confirmation"
+          }
+        },
+        {
+          "name": "summarise"
+        },
+        {
+          "name": "fetch_url"
+        },
+        {
+          "name": "customer_export"
+        }
+      ],
+      "deny": []
+    },
+    "data": {
+      "allow": [
+        "orders:read",
+        "customers:read:own"
+      ],
+      "deny": [
+        "payments.card_numbers"
+      ],
+      "processors": [
+        "anthropic",
+        "internal-gpu"
+      ]
+    },
+    "egress": {
+      "allow": [
+        "api.payments.example.com",
+        ".example.com"
+      ],
+      "deny": [
+        "metadata.google.internal",
+        "10.0.0.0/8"
+      ]
+    },
+    "credentials": {
+      "bind": "task",
+      "max_lifetime_seconds": 3600
+    },
+    "amendment": {
+      "approvers": [
+        {
+          "id": "dana@example.com",
+          "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOoK/1HR0ufCjJ0n1C0QiklFXVEseaVpr/TBT4cOPPCw=\n-----END PUBLIC KEY-----\n"
+        }
+      ],
+      "protected_tools": [
+        "update_envelope",
+        "edit_policy"
+      ]
+    },
+    "components": {
+      "require_manifest": true
+    },
+    "recipients": {
+      "allow": [
+        "@customers.example.com"
+      ],
+      "max_per_run": 1
+    },
+    "limits": {
+      "max_tool_calls": 20,
+      "max_spend_usd": 10
+    },
+    "escalate": [
+      {
+        "when": "amount_usd > 200",
+        "to": "refunds-duty-lead",
+        "timeout_seconds": 1800
+      }
+    ],
+    "on_no_response": "deny",
+    "expires": "2027-06-30T23:59:59Z"
+  },
+  "signature": {
+    "approver": "dana@example.com",
+    "signature": "w4Em7bYdrBcbiW6DoU3g6FDKeBK2bxr525m40VttK0mCiU-Pku-7m1kcQn8a9AxcHodsjyzh2JF7MEsxS9NSDg"
+  },
+  "expect": {
+    "accepted": true,
+    "widening": [
+      "tools.allow gains customer_export",
+      "tools.deny no longer refuses customer_export",
+      "limits.max_spend_usd rises from 3 to 10",
+      "egress.deny no longer refuses 169.254.0.0/16",
+      "credentials.max_lifetime_seconds rises from 900 to 3600"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "name": "a component bringing a protected or denied tool is refused",
+  "manifest": {
+    "name": "admin-mcp",
+    "tools": [
+      "update_envelope",
+      "customer_export"
+    ]
+  },
+  "expect": {
+    "admitted": false,
+    "reasons": [
+      "update_envelope is refused by the envelope",
+      "customer_export is refused by the envelope"
+    ]
+  }
+}

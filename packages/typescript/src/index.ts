@@ -15,7 +15,9 @@ export {
   evaluate,
   defaultDataMatcher,
   defaultConditionMatcher,
+  hostMatches,
   UnsupportedCondition,
+  type CredentialFacts,
   type Call,
   type ConditionMatcher,
   type DataMatcher,
@@ -42,7 +44,20 @@ export {
 } from './enforce.ts';
 
 export {
+  admitComponent,
+  canonical,
+  checkAmendment,
+  signAmendment,
+  widening,
+  type Admission,
+  type AmendmentCheck,
+  type AmendmentRecord,
+  type ComponentManifest,
+} from './amend.ts';
+
+export {
   SCHEMA,
+  SCHEMA_02,
   UnsupportedKeyword,
   ValidationError,
   assertKeywordsSupported,

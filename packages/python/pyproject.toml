@@ -22,6 +22,10 @@ classifiers = [
 # accepts any string, so this pin is load bearing rather than cosmetic.
 dependencies = ["jsonschema>=4.18", "rfc3339-validator>=0.1.4"]
 
+[project.optional-dependencies]
+# Verifying a signed amendment (Intent Envelope 0.2). Everything else works without it.
+signing = ["cryptography>=42"]
+
 [project.scripts]
 intent-envelope = "intent_envelope.cli:main"
 

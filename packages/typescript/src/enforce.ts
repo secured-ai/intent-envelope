@@ -22,6 +22,7 @@ import {
   type Envelope,
   type Result,
   type RunState,
+  type CredentialFacts,
   evaluate,
 } from './evaluate.ts';
 
@@ -99,6 +100,9 @@ export interface EnforcementOptions {
   dataMatcher?: DataMatcher;
   conditionMatcher?: ConditionMatcher;
   now?: () => string;
+  /** 0.2. The run, and task within it, that credentials must be bound to. */
+  runId?: string;
+  taskId?: string;
 }
 
 export interface CheckOverrides {
@@ -106,6 +110,10 @@ export interface CheckOverrides {
   recipients?: string[];
   estimated_cost_usd?: number;
   context?: Record<string, unknown>;
+  /** 0.2 facts, established by the enforcement point rather than the agent. */
+  egress?: string[];
+  processors?: string[];
+  credential?: CredentialFacts;
 }
 
 type ToolCaller = (name: string, args?: Record<string, unknown>, ...rest: unknown[]) => unknown;
@@ -128,6 +136,8 @@ export class EnforcementPoint {
       spend_usd: 0,
       runtime_seconds: 0,
       recipients_contacted: 0,
+      run_id: options.runId ?? '',
+      task_id: options.taskId ?? '',
     };
   }
 
@@ -143,6 +153,9 @@ export class EnforcementPoint {
       recipients: overrides.recipients ?? found.recipients,
       estimated_cost_usd: overrides.estimated_cost_usd ?? found.estimated_cost_usd,
       context: { ...found.context, ...(overrides.context ?? {}) },
+      ...(overrides.egress ? { egress: overrides.egress } : {}),
+      ...(overrides.processors ? { processors: overrides.processors } : {}),
+      ...(overrides.credential ? { credential: overrides.credential } : {}),
     };
 
     if (this.options.now) this.state.now = this.options.now();

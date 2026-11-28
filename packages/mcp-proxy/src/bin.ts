@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     log,
     filterToolList: config.filterToolList,
     ...(escalations ? { escalations } : {}),
+    ...(config.component ? { component: config.component } : {}),
   });
   relay.start();
 

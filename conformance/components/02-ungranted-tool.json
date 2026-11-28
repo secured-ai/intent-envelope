@@ -1,0 +1,17 @@
+{
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "name": "a component bringing a tool the envelope does not grant is refused",
+  "manifest": {
+    "name": "crm-mcp",
+    "tools": [
+      "orders_read",
+      "crm_search"
+    ]
+  },
+  "expect": {
+    "admitted": false,
+    "reasons": [
+      "crm_search is not on tools.allow"
+    ]
+  }
+}

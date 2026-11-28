@@ -44,10 +44,13 @@ and the page saying so trips an escalation to a named human.
 | Path | What it is |
 | --- | --- |
 | `spec/v0.1.md` | The specification. One page. |
-| `schema/intent-envelope-0.1.json` | JSON Schema, published at `https://securedai.org/schemas/intent-envelope/0.1.json` |
+| `spec/v0.2.md` | The 0.2 draft: egress, credentials, processors, signed amendments and component admission. Every 0.1 envelope is unchanged under it. |
+| `schema/intent-envelope-0.1.json`, `schema/intent-envelope-0.2.json` | JSON Schemas, published at `https://securedai.org/schemas/intent-envelope/<version>.json` |
 | `examples/` | Worked envelopes from three real engagements, anonymized |
 | `conformance/valid`, `conformance/invalid` | Envelopes that must validate, and envelopes that must not |
 | `conformance/decisions/` | Proposed calls, and what an enforcement point must decide about each |
+| `conformance/amendments/`, `conformance/components/` | 0.2: proposed revisions an implementation must accept or refuse, and component manifests it must admit or refuse |
+| `packs/` | Policy packs: an egress and metadata baseline, and incident response runbooks for agents |
 | `packages/python/` | The `intent-envelope` validator, evaluator and enforcement point |
 | `packages/typescript/` | The same three in TypeScript, with no runtime dependencies |
 | `packages/mcp-proxy/` | `intent-envelope-mcp`: enforces an envelope on an MCP server, in the wire protocol |
@@ -166,8 +169,11 @@ anonymized and reduced to the envelope the remediated architecture enforces.
 
 ## Status
 
-Version 0.1 is a draft we are implementing against. The schema may change before 1.0,
-and section 7 of the spec lists what we have deliberately left open: `data` addressing
+Version 0.1 is a draft we are implementing against, and 0.2 is a draft on top of it: an
+envelope opts in by declaring `"intent_envelope": "0.2"`, and both packages validate and
+evaluate either version. Verifying a signed amendment in Python needs
+`pip install intent-envelope[signing]`. The schema may change before 1.0, and the spec
+lists what we have deliberately left open: `data` addressing
 and the `escalate.when` expression syntax are supplied by the deployment, and the
 enforcement point takes both as arguments rather than guessing. If you are building
 agents and any of it is wrong for your deployment, open an issue. That is more useful to

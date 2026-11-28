@@ -11,6 +11,10 @@ guesses is worse than one that refuses.
 
 Nothing in this module consults the model, the prompt, or the agent's stated reason for
 the call. It reads the envelope, the call, and the run so far.
+
+Version 0.2 adds four rules, each applying only when the envelope carries the block it
+reads, so every 0.1 envelope decides exactly as it did: amendment, credentials,
+data.processors and egress.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ __all__ = [
     "UnsupportedCondition",
     "default_data_matcher",
     "default_condition_matcher",
+    "host_matches",
 ]
 
 ALLOW, DENY, ESCALATE = "allow", "deny", "escalate"
@@ -56,6 +61,11 @@ class Call:
     recipients: List[str] = field(default_factory=list)
     estimated_cost_usd: float = 0.0
     context: Dict[str, Any] = field(default_factory=dict)
+    # 0.2: hosts the call reaches, processors it sends data to, and the credential it
+    # uses, all as the enforcement point established them.
+    egress: List[str] = field(default_factory=list)
+    processors: List[str] = field(default_factory=list)
+    credential: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -68,6 +78,9 @@ class RunState:
     spend_usd: float = 0.0
     runtime_seconds: int = 0
     recipients_contacted: int = 0
+    # 0.2: the run, and the task within it, a credential must be bound to.
+    run_id: str = ""
+    task_id: str = ""
 
 
 @dataclass
@@ -218,6 +231,73 @@ def _as_number(value: Any) -> Optional[float]:
         return None
 
 
+def _ipv4(value: str) -> Optional[int]:
+    m = re.fullmatch(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})", value)
+    if not m:
+        return None
+    parts = [int(x) for x in m.groups()]
+    if any(p > 255 for p in parts):
+        return None
+    return (parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3]
+
+
+def host_matches(host: str, pattern: str) -> bool:
+    """0.2 host matching, the same in every implementation.
+
+    An exact host or IP, a leading dot or ``*.`` for any subdomain (never the bare domain
+    itself), or an IPv4 CIDR range. Case-insensitive, and a trailing dot is ignored.
+    """
+    h = host.lower().rstrip(".") if host.endswith(".") else host.lower()
+    p = pattern.lower().rstrip(".") if pattern.endswith(".") else pattern.lower()
+    cidr = re.fullmatch(r"(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})", p)
+    if cidr:
+        base, addr, bits = _ipv4(cidr.group(1)), _ipv4(h), int(cidr.group(2))
+        if base is None or addr is None or bits > 32:
+            return False
+        mask = 0 if bits == 0 else (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF
+        return (addr & mask) == (base & mask)
+    if p.startswith("*."):
+        return h.endswith(p[1:])
+    if p.startswith("."):
+        return h.endswith(p)
+    return h == p
+
+
+def _credential_violation(envelope: Dict[str, Any], call: Call, state: RunState) -> Optional[str]:
+    rule = envelope.get("credentials")
+    if not rule:
+        return None
+    c = call.credential
+    if not c:
+        return "the call carries no credential facts, so what it is bound to cannot be established"
+    run_id = c.get("run_id")
+    if not run_id or not state.run_id or run_id != state.run_id:
+        bound = f"run {run_id}" if run_id else "no run"
+        here = f" ({state.run_id})" if state.run_id else ""
+        return f"the credential is bound to {bound}, not this run{here}"
+    if rule.get("bind") == "task":
+        task_id = c.get("task_id")
+        if not task_id or not state.task_id or task_id != state.task_id:
+            bound = f"task {task_id}" if task_id else "no task"
+            here = f" ({state.task_id})" if state.task_id else ""
+            return f"the credential is bound to {bound}, not this task{here}"
+    expires = _parse_instant(c.get("expires_at") or "")
+    if expires is None:
+        return "the credential states no expiry, so it could outlive the envelope"
+    ends = _parse_instant(envelope.get("expires") or "")
+    if ends is not None and expires > ends:
+        return f"the credential expires at {c.get('expires_at')}, after the envelope does"
+    max_life = rule.get("max_lifetime_seconds")
+    if max_life is not None:
+        issued = _parse_instant(c.get("issued_at") or "")
+        if issued is None:
+            return "the credential states no issue time, so its lifetime cannot be checked"
+        lifetime = round((expires - issued).total_seconds())
+        if lifetime > max_life:
+            return f"the credential lives {lifetime}s, longer than the permitted {max_life}s"
+    return None
+
+
 def _limit_exceeded(limits: Dict[str, Any], call: Call, state: RunState) -> Optional[str]:
     max_calls = limits.get("max_tool_calls")
     if max_calls is not None and state.tool_calls_made + 1 > max_calls:
@@ -275,6 +355,11 @@ def evaluate(
     if call.tool in (tools.get("deny") or []):
         return verdict(DENY, "tools.deny", f"{call.tool} is on tools.deny, which no later grant overrides")
 
+    # 0.2: a tool that changes envelopes, policies or controls is denied to the agent
+    #    the envelope governs, whatever tools.allow says. Section 2.1 requirement 1.
+    if call.tool in ((envelope.get("amendment") or {}).get("protected_tools") or []):
+        return verdict(DENY, "amendment", f"{call.tool} changes envelopes or controls, which the agent they govern may never do")
+
     # 3. Silence is not permission.
     grant = _grant_for(envelope, call.tool)
     if grant is None:
@@ -284,6 +369,11 @@ def evaluate(
     violation = _constraint_violation(grant, call.arguments)
     if violation:
         return verdict(DENY, "tools.constraints", violation)
+
+    # 0.2: a credential bound to this run, that dies with the envelope.
+    bad_credential = _credential_violation(envelope, call, state)
+    if bad_credential:
+        return verdict(DENY, "credentials", bad_credential)
 
     # 5. Data. An absent data block is unconstrained here, unlike recipients, because
     #    0.1 states the default for recipients and not for this one.
@@ -296,6 +386,24 @@ def evaluate(
             allowed = data_rules.get("allow")
             if allowed is not None and not any(data_matcher(target, p) for p in allowed):
                 return verdict(DENY, "data", f"{target} is not within data.allow")
+
+    # 0.2: where the data goes to be processed. Present and empty means nowhere.
+    processors = (data_rules or {}).get("processors")
+    if processors is not None:
+        for p in call.processors:
+            if p not in processors:
+                return verdict(DENY, "data.processors", f"{p} is not on data.processors")
+
+    # 0.2: which hosts the call reaches. Deny wins, as everywhere else.
+    egress = envelope.get("egress")
+    if egress is not None:
+        for host in call.egress:
+            denied = next((p for p in egress.get("deny") or [] if host_matches(host, p)), None)
+            if denied:
+                return verdict(DENY, "egress", f"{host} matches egress.deny entry {denied}")
+            allowed_hosts = egress.get("allow")
+            if allowed_hosts is not None and not any(host_matches(host, p) for p in allowed_hosts):
+                return verdict(DENY, "egress", f"{host} is not on egress.allow")
 
     # 6. Recipients. An absent block means nobody, which the specification states.
     recipients_rules = envelope.get("recipients")

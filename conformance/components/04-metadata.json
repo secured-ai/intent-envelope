@@ -1,0 +1,19 @@
+{
+  "envelope_ref": "../valid/refund-desk-0.2.json",
+  "name": "a component that reaches the metadata service is refused by egress.deny",
+  "manifest": {
+    "name": "fetch-mcp",
+    "tools": [
+      "fetch_url"
+    ],
+    "egress": [
+      "169.254.169.254"
+    ]
+  },
+  "expect": {
+    "admitted": false,
+    "reasons": [
+      "it reaches 169.254.169.254, which egress.deny refuses (169.254.0.0/16)"
+    ]
+  }
+}

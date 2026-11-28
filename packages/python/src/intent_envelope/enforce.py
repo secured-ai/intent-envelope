@@ -115,6 +115,8 @@ class EnforcementPoint:
         data_matcher: Callable[[str, str], bool] = default_data_matcher,
         condition_matcher: Callable[[str, Dict[str, Any]], bool] = default_condition_matcher,
         now: Optional[Callable[[], str]] = None,
+        run_id: str = "",
+        task_id: str = "",
     ):
         self.envelope = envelope
         self.facts = facts
@@ -122,7 +124,8 @@ class EnforcementPoint:
         self.data_matcher = data_matcher
         self.condition_matcher = condition_matcher
         self._now = now
-        self.state = RunState()
+        # 0.2: the run, and task within it, that credentials must be bound to.
+        self.state = RunState(run_id=run_id, task_id=task_id)
         self.decisions: List[Decision] = []
 
     # ---------------------------------------------------------------- deciding
@@ -138,6 +141,10 @@ class EnforcementPoint:
             recipients=overrides.get("recipients", found.recipients),
             estimated_cost_usd=overrides.get("estimated_cost_usd", found.estimated_cost_usd),
             context={**found.context, **overrides.get("context", {})},
+            # 0.2 facts, established by the enforcement point rather than the agent.
+            egress=list(overrides.get("egress", [])),
+            processors=list(overrides.get("processors", [])),
+            credential=overrides.get("credential"),
         )
         if self._now:
             self.state.now = self._now()

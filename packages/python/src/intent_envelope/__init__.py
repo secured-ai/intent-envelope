@@ -21,6 +21,8 @@ from .evaluate import (
     default_data_matcher,
     evaluate,
 )
+from .amend import Admission, AmendmentCheck, admit_component, canonical, check_amendment, sign_amendment, widening
+from .evaluate import host_matches
 from .validate import ValidationError, load_schema, validate
 
 __version__ = "0.2.0"
@@ -43,5 +45,14 @@ __all__ = [
     "default_facts",
     "Refused",
     "Escalated",
+    # 0.2
+    "host_matches",
+    "check_amendment",
+    "sign_amendment",
+    "widening",
+    "canonical",
+    "admit_component",
+    "AmendmentCheck",
+    "Admission",
     "__version__",
 ]
